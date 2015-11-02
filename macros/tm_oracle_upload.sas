@@ -1,8 +1,15 @@
 %macro tm_oracle_upload(data=,
                         table_name=,
-                        userid=,
-                        password=,
-                        database=                        
+                        userid=mydesk,                        
+                        password=1Catbird,
+                        tnsname=oracle,
+                        control_files_directory=,
+                                    data_files_directory=,
+                                    keep_control_files=N,
+                                    keep_data_files=N,
+                                    keep_log_files=N,                                  
+                        sqlplus_path=C:\oracle\product\12.1.0\client_1\BIN\sqlplus.exe,
+                        sqlldr_path=C:\oracle\product\12.1.0\client_1\BIN\sqlldr.exe                     
                         );
 %local i j k null sep;
 %let null=;
@@ -25,7 +32,15 @@ reset noprint;
 select path into :worklib_path from dictionary.libnames where libname='WORK';
 quit;
 
-%let worklib_path=D:\Projects\AIG\ClaimsLab\Report Dashboard\data-oracle;
+%if %quote(&control_files_directory.)=%quote(&null.) %then %do;
+   %let control_files_directory=%trim(%left(&worklib_path.));
+   %let keep_control_files=N;
+   %let keep_log_files=N;
+   %end;
+%if %quote(&data_files_directory.)=%quote(&null.) %then %do;
+   %let data_files_directory=%trim(%left(&worklib_path.));
+   %let keep_data_files=N;
+   %end;
 
 proc contents data=&data out=_contents noprint;
 run;
@@ -58,38 +73,38 @@ data _contents;
       xname2=xname;
       end;
    
-   if substr(format,1,8) in (&datetime_fmts) and length(format)>=8 then format="DATETIME18.";
-   else if substr(format,1,8) in (&time_fmts) and length(format)>=8 then format="TIME8.";
+   if substr(format,1,8) in (&datetime_fmts) and length(format)>=8 then format="DATETIME25.6";
+   else if substr(format,1,8) in (&time_fmts) and length(format)>=8 then format="TOD15.6";
    else if substr(format,1,8) in (&date_fmts) and length(format)>=8 then format="MMDDYY10.";
 
-   else if substr(format,1,7) in (&datetime_fmts) and length(format)>=7 then format="DATETIME18.";
-   else if substr(format,1,7) in (&time_fmts) and length(format)>=7 then format="TIME8.";
+   else if substr(format,1,7) in (&datetime_fmts) and length(format)>=7 then format="DATETIME25.6";
+   else if substr(format,1,7) in (&time_fmts) and length(format)>=7 then format="TOD15.6";
    else if substr(format,1,7) in (&date_fmts) and length(format)>=7 then format="MMDDYY10.";
 
-   else if substr(format,1,6) in (&datetime_fmts) and length(format)>=6 then format="DATETIME18.";
-   else if substr(format,1,6) in (&time_fmts) and length(format)>=6 then format="TIME8.";
+   else if substr(format,1,6) in (&datetime_fmts) and length(format)>=6 then format="DATETIME25.6";
+   else if substr(format,1,6) in (&time_fmts) and length(format)>=6 then format="TOD15.6";
    else if substr(format,1,6) in (&date_fmts) and length(format)>=6 then format="MMDDYY10.";
 
-   else if substr(format,1,5) in (&datetime_fmts) and length(format)>=5 then format="DATETIME18.";
-   else if substr(format,1,5) in (&time_fmts) and length(format)>=5 then format="TIME8.";
+   else if substr(format,1,5) in (&datetime_fmts) and length(format)>=5 then format="DATETIME25.6";
+   else if substr(format,1,5) in (&time_fmts) and length(format)>=5 then format="TOD15.6";
    else if substr(format,1,5) in (&date_fmts) and length(format)>=5 then format="MMDDYY10.";
 
-   else if substr(format,1,4) in (&datetime_fmts) and length(format)>=4 then format="DATETIME18.";
-   else if substr(format,1,4) in (&time_fmts) and length(format)>=4 then format="TIME8.";
+   else if substr(format,1,4) in (&datetime_fmts) and length(format)>=4 then format="DATETIME25.6";
+   else if substr(format,1,4) in (&time_fmts) and length(format)>=4 then format="TOD15.6";
    else if substr(format,1,4) in (&date_fmts) and length(format)>=4 then format="MMDDYY10.";
 
-   else if substr(format,1,3) in (&datetime_fmts) and length(format)>=3 then format="DATETIME18.";
-   else if substr(format,1,3) in (&time_fmts) and length(format)>=3 then format="TIME8.";
-   else if substr(format,1,3) in (&date_fmts) and length(format)>=3 then format="MMDDYY10.";
+   else if substr(format,1,3) in (&datetime_fmts) and length(format)>=3 then format="DATETIME25.6";
+   else if substr(format,1,3) in (&time_fmts) and length(format)>=3 then format="TOD15.6";
+   else if substr(format,1,3) in (&date_fmts) and length(format)>=3 then format="MMDDYY10.";   
 
    else format='';
    
    length oracle_type $ 20;
-   if format="DATETIME18." then oracle_type='TIMESTAMP (0)';
-   else if format="TIME8." then oracle_type='TIME (0)';
+   if format="DATETIME25.6" then oracle_type='TIMESTAMP (6)';
+   else if format="TOD15.6" then oracle_type='TIME (6)';
    else if format="MMDDYY10." then oracle_type='DATE';
    else if type=1 then oracle_type='NUMBER';
-   else if type=2 then oracle_type='VARCHAR2(' || trim(left(length)) || ' BYTE)';
+   else if type=2 then oracle_type='VARCHAR2(' || trim(left(length)) || ' CHAR)';
    run;
 
 proc sort data=_contents; 
@@ -109,37 +124,64 @@ data _null_;
       end;
    run;
 
-filename dftx1 "%trim(%left(&worklib_path))\&data..psv" lrecl=32000;
+filename dftx1 "&data_files_directory.\&data..psv" lrecl=32000;
 
 data _null_;
    set &data;
-   file dftx1;
-   length __xx $ 18;
+   file dftx1 termstr=LF;
+   length __xx $ 256 _cc $ 32767;
    %do i=1 %to &nvars;
       %if &&fmt&i=&null %then %do;
-         put &&var&i +(-1) @;
+          %if &&type&i=1 %then %do;
+             if &&var&i ne . then put &&var&i +(-1) @;
+             %end;
+          %else %do;
+             if strip(&&var&i) ne '' then do;
+                if index(&&var&i..,'"')>0 then do;
+                   _cc=tranwrd(&&var&i..,'"','""');
+                   put '"' _cc +(-1) '"' @;
+                   end;
+                else do;
+                   put '"' &&var&i.. +(-1) '"' @;
+                   end;
+                end;
+              %end;
          %end;
       %else %do;
-         __xx=trim(left(put(&&var&i,&&fmt&i.)));
-         put __xx @;
+          %if &&type&i=1 %then %do;
+             if &&var&i ne . then do;
+                  __xx=trim(left(put(&&var&i,&&fmt&i.)));
+                  put __xx +(-1) @;
+                end;                   
+             %end;
+          %else %do;
+             if strip(&&var&i) ne '' then do;
+                if index(&&var&i..,'"')>0 then do;
+                   _cc=tranwrd(&&var&i..,'"','""');
+                   put '"' _cc +(-1) '"' @;
+                   end;
+                else do;
+                   put '"' &&var&i.. +(-1) '"' @;
+                   end;
+                end;
+             %end;         
          %end;
-      %if &i<&nvars %then %do;
+      %if &i<=&nvars %then %do;
          put "|" @;
-         %end;
+         %end;    
       %end;
    put;
    run;
 
-filename dftx2 "%trim(%left(&worklib_path))\&data..ctl" lrecl=150;
+filename dftx2 "&control_files_directory.\&data..ctl" lrecl=150;
 
 data _null_;
    file dftx2;
    put 'LOAD DATA';
-   put 'INFILE "' "%trim(%left(&worklib_path))\&data..psv" '"';
-   put 'BADFILE "' "%trim(%left(&worklib_path))\&data..psv.bad" '"';
-   put 'DISCARDFILE "' "%trim(%left(&worklib_path))\&data..psv.dsc" '"';
+   put 'INFILE "' "&data_files_directory.\&data..psv" '" ' '" str x' "'7c0a'" '"';
    put "INSERT INTO TABLE &table_name";
-   put '   FIELDS TERMINATED BY "|" OPTIONALLY ENCLOSED BY ' "'" '"' "'";   
+   put '   FIELDS TERMINATED BY "|" OPTIONALLY ENCLOSED BY ' "'" '"' "'"; 
+   put 'TRAILING NULLCOLS';  
    put '(';
    %do i=1 %to &nvars;
       %if &i ne &nvars %then %let sep=,;
@@ -152,11 +194,11 @@ data _null_;
          %if &&fmt&i=&null %then %do;
             put " &&xvar&i..&sep";
             %end;
-         %else %if %quote(&&fmt&i)=%quote(DATETIME18.) %then %do;
-            put " &&xvar&i.. TIMESTAMP " '"DDMONYYYY:HH24:MI:SS"' "&sep. ";;
+         %else %if %quote(&&fmt&i)=%quote(DATETIME25.6) %then %do;
+            put " &&xvar&i.. TIMESTAMP(6) " '"DDMONYYYY:HH24:MI:SS.FF6"' "&sep. ";
             %end;
          %else %if %quote(&&fmt&i)=%quote(TIME9.) %then %do;
-            put " &&xvar&i.. TIME" '"HH24:MI:SS"' "&sep. "; 
+            put " &&xvar&i.. TIME(6)" '"HH24:MI:SS.FF6"' "&sep. "; 
            
             %end; 
          %else %do;
@@ -167,7 +209,7 @@ data _null_;
       put ' )';
       run;
 
-filename dftx3 "%trim(%left(&worklib_path))\&data..sql" lrecl=150;
+filename dftx3 "&control_files_directory.\&data..sql" lrecl=150;
 
 data _null_;
    file dftx3;
@@ -196,7 +238,7 @@ data _null_;
    put "/";
    put "EXIT";
    run;
-
+   
 proc sql;
 reset noprint;
 select trim(left(upcase(setting))) into :xwait_setting from dictionary.options
@@ -208,24 +250,52 @@ quit;
    options noxwait;
    %end;
 
-%if &database=&null %then %do;
-   %let cmd=cmd.exe /C sqlplus.exe &userid/&password @"%trim(%left(&worklib_path))\&data..sql" > "%trim(%left(&worklib_path))\&data..sqlplus.out";
-   %sysexec &cmd;
 
-   %let cmd=cmd.exe /C sqlldr.exe USERID=&userid/&password, CONTROL=%str(%')%trim(%left(&worklib_path))\&data..ctl%str(%'), LOG=%str(%')%trim(%left(&worklib_path))\&data..log%str(%'), BAD=%str(%')%trim(%left(&worklib_path))\&data..bad%str(%'), DIRECT=TRUE;
-   %put &cmd.;
-   %sysexec &cmd;
-   %end;
-%else %do;
-   %let cmd=cmd.exe /C sqlplus.exe &userid/&password@database @"%trim(%left(&worklib_path))\&data..sql" > "%trim(%left(&worklib_path))\&data..sqlplus.out";
-   %sysexec &cmd;
+%*let cmd1=cmd.exe /C "&sqlplus_path." &userid/&password@&tnsname @"&control_files_directory.\&data..sql";
+%*let cmd2=cmd.exe /C "&sqlldr_path." USERID=&userid/&password@&tnsname, CONTROL=%str(%')&control_files_directory.\&data..ctl%str(%'), LOG=%str(%')&control_files_directory.\&data..log%str(%'), BAD=%str(%')&control_files_directory.\&data..bad%str(%'), DIRECT=TRUE;
 
-   %let cmd=cmd.exe /C sqlldr.exe USERID=&userid/&password@&database, CONTROL=%str(%')%trim(%left(&worklib_path))\&data..ctl%str(%'), LOG=%str(%')%trim(%left(&worklib_path))\&data..log%str(%'), BAD=%str(%')%trim(%left(&worklib_path))\&data..bad%str(%'), DIRECT=TRUE;
-   %sysexec &cmd;
-   %end;
+filename dftx4 "&control_files_directory.\&data..bat" lrecl=2500;
 
+data _null_;
+   file dftx4;
+   put 'cd "' "&control_files_directory." '"';
+   put 'cmd.exe /C "' "&sqlplus_path. &userid/&password@&tnsname @" '"' "&control_files_directory.\&data..sql" '"';
+   put 'cmd.exe /C "' "&sqlldr_path. USERID=&userid/&password@&tnsname, CONTROL='&control_files_directory.\&data..ctl', LOG='&control_files_directory.\&data..log', BAD='&control_files_directory.\&data..bad', DIRECT=TRUE";
+  run;
+  
+%let cmd=cmd.exe /C "&control_files_directory.\&data..bat";
+%sysexec &cmd;
+  
 %if &xwait_setting=XWAIT %then %do;
    options xwait;
+   %end;
+
+filename dftx1 clear;
+filename dftx2 clear;
+filename dftx3 clear;
+filename dftx4 clear;
+
+
+%macro delete_file(x);
+data _null_;
+   rc=filename(fn,"&x");
+   if rc=0 and fexist(fn) then rc=fdelete(fname);
+   rc=filename(fname);
+   run;
+%mend;
+ 
+%if %qupcase(&keep_control_files.)=%quote(N) %then %do;
+   %delete_file(&control_files_directory.\&data..ctl);
+   %delete_file(&control_files_directory.\&data..sql);
+   %end;
+   
+%if %qupcase(&keep_log_files.)=%quote(N) %then %do;
+   %delete_file(&control_files_directory.\&data..log);
+   %delete_file(&control_files_directory.\&data..bad);
+   %end;
+   
+%if %qupcase(&keep_data_files.)=%quote(N) %then %do;
+   %delete_file(&data_files_directory.\&data..psv);
    %end;
 %mend;
 
