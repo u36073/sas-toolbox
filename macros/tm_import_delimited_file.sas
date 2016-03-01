@@ -8,6 +8,8 @@
        tempdir=.      
        );
 
+%local i;
+
 %if %qupcase(&cr_lf_in_fields)=%quote(Y) %then %do;
 
     filename _tidftmp "&tempdir.\tm_import_delimite_file-macro-temp-file.txt" recfm=n;
@@ -18,9 +20,11 @@
                 
         length current_char next_char repA repD $ 1;
         
-        retain first_character 1 open 0 current_char repA repD '';
+        retain first_character 1 open 0 current_char repA repD '' char_count 0;
         
         input next_char $char1.;
+        
+        char_count=char_count+1;
                 
         if first_character=1 then do;
            current_char=next_char;
@@ -30,16 +34,20 @@
            return;
            end;
 		
-		  file _tidftmp recfm=n;
+		    file _tidftmp recfm=n;
 		                
         if open=0 and current_char='"' then open=1;
-        else if open=1 and current_char='"' and next_char="%unquote(&delimiter)" then open=0;
+        else if open=1 and current_char='"' and 
+               (next_char="%unquote(&delimiter)" or next_char='0D'x or next_char='0A'x )
+             then open=0;
             
         if open=1 and current_char='0D'x then put repD +(-1);
         else if open=1 and current_char='0A'x then put repA +(-1);
         else put current_char +(-1);
                    
         current_char = next_char;
+        
+        *if char_count>1000 then stop;
         
         return;
         
