@@ -171,9 +171,9 @@ Example:
 	%if %quote(&depname2)=%quote(&null) %then %let depname2=__v2;
 	%if %quote(&depname3)=%quote(&null) %then %let depname3=__v3;
 
-	%if %quote(&deplabel1)=%quote(&null) %then %let deplabel1=&depname1;
-	%if %quote(&deplabel2)=%quote(&null) %then %let deplabel2=&depname2;
-	%if %quote(&deplabel3)=%quote(&null) %then %let deplabel3=&depname3;
+	%if %quote(&deplabel1)=%quote(&null) %then %let deplabel1=&depvar1;
+	%if %quote(&deplabel2)=%quote(&null) %then %let deplabel2=&depvar2;
+	%if %quote(&deplabel3)=%quote(&null) %then %let deplabel3=&depvar3;
 
 	%if %quote(&indlabel)=%quote(&null) %then %let indlabel=&indvar;
 	%if %quote(&bylabel)=%quote(&null) %then %let bylabel=&by;

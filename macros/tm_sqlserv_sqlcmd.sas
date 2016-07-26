@@ -1,4 +1,4 @@
-options mprint mlogic mcompilenote=all xsync noxwait;;
+options mprint mlogic mcompilenote=all;
 
 %macro tm_sqlserv_sqlcmd(command=,								 
 								 command_file=,
@@ -9,7 +9,8 @@ options mprint mlogic mcompilenote=all xsync noxwait;;
 								 out=,
 								 guessingrows=10000
 								 );
-
+options xsync noxwait;
+%local workpath rn null output_filex parms;
 %let workpath=%sysfunc(pathname(work));
 %let rn=%sysfunc(int(%sysevalf(9999999*(%sysfunc(ranuni(-1))))));
 %let null=;

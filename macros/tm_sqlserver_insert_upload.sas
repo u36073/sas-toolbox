@@ -9,17 +9,17 @@
 %let null=;
 %let datetime_fmts="B8601DN","B8601DT","B8601DX","B8601DZ","B8601LX","DATEAMPM","DATETIME",
                    "DTDATE","DTMONYY","DTWKDATX","DTYEAR","DTYYQC","E8601DN","E8601DT",
-                   "E8601DX","E8601DZ","E8601LX","MDYAMPM"
-                   ;
+                   "E8601DX","E8601DZ","E8601LX","MDYAMPM";
+                   
 %let time_fmts="B8601LZ","B8601TM","B8601TX","B8601TZ","E8601LZ","E8601TM","E8601TX",
-               "E8601TZ","HHMM","HOUR","MMSS","TIME","TIMEAMPM","TOD"
-               ;
+               "E8601TZ","HHMM","HOUR","MMSS","TIME","TIMEAMPM","TOD";
+               
 %let date_fmts="B8601DA","DATE","DAY","DDMMYY","DDMMYYX","DOWNAME","E8601DA","JULDAY",
                "JULIAN","MMDDYY","MMDDYYX","MMYY","MMYYX","MONNAME","MONTH","MONYY",
                "PDJULG","PDJULI","QTR","QTRR","WEEKDATE","WEEKDATX","WEEKDAY","WEEKU",
                "WEEKV","WEEKW","WORDDATE","WORDDATX","YEAR","YYMM","YYMMDD","YYMMDDX",
-               "YYMON","YYQ","YYQX","YYQR","YYQRX"
-               ;
+               "YYMON","YYQ","YYQX","YYQR","YYQRX";
+               
 
 proc sql;
 reset noprint;
@@ -113,7 +113,7 @@ data _null_;
    put "CREATE TABLE &table_name (";  
    put '   ' "&table_name._id" ' ' "INTEGER PRIMARY KEY,";
    %do i=1 %to &nvars;
-      %if &i ne &nvars %then %let sep=,;
+      %if &i ne &nvars %then %let sep=%bquote(,);
       %else %let sep=&null;
       %if %qupcase(&&otype&i)=%quote(DATE) %then %do;
       	put '   ' "&&xvar&i" ' ' "DATETIME NULL&sep.";
@@ -136,7 +136,7 @@ data _null_;
    length _ts $ 256;
    put "INSERT INTO &table_name VALUES (" _n_ "," @;  
    %do i=1 %to &nvars;
-      %if &i ne &nvars %then %let sep=,;
+      %if &i ne &nvars %then %let sep=%bquote(,);
       %else %let sep=&null;
       %if %qupcase(&&otype&i)=%quote(DATE) %then %do;
       	if &&xvar&i=. then do;

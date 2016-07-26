@@ -23,7 +23,8 @@
             );                                                                                                          
 
  
-%let null=;                                                                                                             
+%let null=;  
+%let workdir=%sysfunc(getoption(work));                                                                                                           
 
 %if %qupcase(&chisqrnk)=%quote(YES) or %qupcase(&chisqrnk)=%quote(Y) %then %do;
    %let options=&options chisq;
@@ -47,11 +48,8 @@ data _null_;                                                /*  This datastep de
                                                                                                                         
 %let tid=%trim(%left(&tid));                                                                                            
                                                                                                                         
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-%if %quote(&codefile)=%quote(_temp_) %then %do;             /*  Here the temporary filename is allocated depending */   
+%if %quote(&codefile)=%quote(_temp_) or 
+    %quote(&codefile)=%quote(&null.) %then %do;             /*  Here the temporary filename is allocated depending */   
    %if &os=mvs %then %do;                                   /*  on the value of &OS.  The file is only allocated   */   
       %let unum=%substr(&sysjobid,1,6);                     /*  if &codefile is equal to _temp_                    */   
       filename codefile "&unum..tg&tid..freq.app"                                                                       
@@ -59,7 +57,7 @@ data _null_;                                                /*  This datastep de
          blksize=22000 lrecl=110 recfm=fb dsorg=ps;                                                                     
       %end;                                                                                                             
    %else %do;                                                                                                           
-      filename codefile "tg&tid..freq.app";                                                                             
+      filename codefile "&workdir.\tg&tid..freq.app";                                                                             
       %end;                                                                                                             
    %let codefile=codefile;                                                                                              
    %end;                                                                                                                

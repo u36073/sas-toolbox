@@ -5,7 +5,7 @@
 								 server=192.168.1.111,
 								 port=1433,
 								 user=tmoore,
-								 password=catbird
+								 password=catbird								 
 								 );
 %global sqlserv_version
         sqlserv_sqlcmd
@@ -21,6 +21,7 @@
 
 %if %qupcase(&version) ne %quote(&null) %then %let sqlserv_version=&version;
 %if %quote(&path_sqlcmd) ne %quote(&null) %then %let sqlserv_sqlcmd=&path_sqlcmd;
+%if %quote(&path_bcp) ne %quote(&null) %then %let sqlserv_bcp=&path_bcp;
 %if %quote(&protocol) ne %quote(&null) %then %let sqlserv_protocol=&protocol;
 %if %quote(&server) ne %quote(&null) %then %let sqlserv_server=&server;
 %if %quote(&port) ne %quote(&null) %then %let sqlserv_port=&port;

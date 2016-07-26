@@ -1,9 +1,9 @@
-%macro include_macros(incmacdir);
+%macro include_dir_files(incdir,extension);
 %local null; 
 %let null=;
 
-%if %quote(&incmacdir)=%quote(&null) %then %do;
-	%let incmacdir=X:\AppData\sas-toolbox\macros;
+%if %quote(&incdir)=%quote(&null) %then %do;
+	%let incdir=X:\AppData\sas-toolbox\macros;
 	%end;
 	
 %let workdir=%sysfunc(getoption(work));
@@ -22,7 +22,7 @@ data _null_;
 data _incmacfiles;
 	keep filename;	
 	length fref $8 filename $512 _fn $512;
- 	rc = filename(fref, "&incmacdir.");
+ 	rc = filename(fref, "&incdir.");
  	if rc = 0 then do;
  		did = dopen(fref);
  		rc = filename(fref);
@@ -35,7 +35,7 @@ data _incmacfiles;
  		end;
  	if did <= 0  then do; 
  		putlog "ERROR:  Unable to open include macros directory  ";
- 		putlog "        &incmacdir.";
+ 		putlog "        &incdir.";
  		file "&incmac_code_file" lrecl=1024;
  		put "/*********************************************************";
  		put;
@@ -54,10 +54,10 @@ data _incmacfiles;
 	 		/* If this entry is a file, then output. */
 	 		fid = mopen(did, filename);	 	
 	 		if fid > 0 then do;	 					 			 		
-	 			if strip(upcase(filename)) ne 'INCLUDE_MACROS.SAS' and length(filename)>4 then do;
+	 			if strip(upcase(filename)) ne 'INCLUDE_DIR_FILES.SAS' and length(filename)>4 then do;
 	 				_fn=strip(upcase(filename));
-	 				if substr(_fn,length(_fn)-2,3)="SAS" then do;
-	 					put '%include "' "&incmacdir.\" filename +(-1) '";';	 			
+	 				if substr(_fn,length(_fn)-2,3)="%qupcase(&extension)" then do;
+	 					put '%include "' "&incdir.\" filename +(-1) '";';	 			
 	 					end;
 	 				end;
 	 			end;
@@ -67,5 +67,8 @@ data _incmacfiles;
  run;	
  
  %include "&incmac_code_file.";
+ 
+ filename __icf "&incmac_code_file.";
+ %let rc=%sysfunc(fdelete(__icf));
 	
 %mend;
