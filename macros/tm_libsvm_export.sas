@@ -9,7 +9,7 @@
 %let null=;
 
 libname __d "&out_dir.";
-filename __f "&out_dir.\&out_prefix..libvsm.txt" lrecl=32767;
+filename __f "&out_dir.\&out_prefix.libvsm.txt" lrecl=32767;
 			 
 proc contents data=&data out=_contents noprint;
 run;
@@ -39,7 +39,7 @@ data __d.&out_prefix.libsvm_cmap(keep=name libsvm_column_index);
 %if %qupcase(&out_spec_data.) ne %quote(&null) %then %do;
    data &out_spec_data.;
       length role $ 32;
-      set __d.&out_prefix.libsvm_cmap(rename=(name=variable) end=last;
+      set __d.&out_prefix.libsvm_cmap(rename=(name=variable)) end=last;
       role = "FEATURE";
       output;
       if last then do;

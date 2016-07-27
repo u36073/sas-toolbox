@@ -1,6 +1,6 @@
 %macro tm_xgboost(data=,
                   out=,
-                  out_keep_vars=,
+                  id_vars=,
                   pred_varname=,   
                   training_eval_test_data=, /* Not implemented yet. */                      
                   model_save_dir=,             
@@ -10,7 +10,7 @@
                   booster=gbtree,
                   silent=,
                   nthread=,                
-                  objective="reg:linear",
+                  objective=reg:linear,
                   base_score=,
                   eta=,
                   gamma=,
@@ -31,6 +31,7 @@
                   rate_drop=,
                   skip_drop=,
                   eval_metric=,
+                  eval_train=1,
                   seed=,
                   use_buffer=,
                   num_round=,
@@ -69,21 +70,24 @@ data _null_;
 
 libname m&rn. "&model_save_dir.";
     
-data &templib..xgbm&rn._train;
+data &templib..xgbm&rn._train(drop=&id_vars.) 
+     &templib..xgbm&rn._idvars(keep=_id&rn. &id_vars.);
    set &data.;
    _id&rn.=_n_;
    run;
+
 
 %tm_libsvm_export(data=&templib..xgbm&rn._train,
                   depvar=&depvar.,
                   keyvars=_id&rn.,
                   out_dir=&tempdir.,
                   out_prefix=xgbm&rn._train_,
-                  out_spec_data=m&rn..&model_name._libsvm_spec
+                  out_spec_data=m&rn..libsvm_spec
                   );
+                 
                   
-proc export data=m&rn..&model_name._libsvm_spec
-            outfile="&model_save_dir.\&model_name._libsvm_spec.csv" 
+proc export data=m&rn..libsvm_spec
+            outfile="&model_save_dir.\libsvm_spec.csv" 
             dbms=csv replace;
 putnames=YES;
 run;               
@@ -109,18 +113,13 @@ data _null_;
 %local null;
 %let null=;
 %if %quote(&&&x) ne %quote(&null.) %then %do;
-   put '&x. = "' "&&&x." '"';
+   put "&x." ' = "' "&&&x." '"';
    %end;
 %mend;
 
 %macro create_conf(conf_fileref,conf_task);
 data _null_;
    file &conf_fileref.;
-   
-   put "#";
-   put "# General Parameters";
-   put "#";
-   put;
    %set_if_not_null(booster);
    %set_if_not_null(silent);
    %set_if_not_null(nthread);   
@@ -131,19 +130,22 @@ data _null_;
    %set_if_not_null(save_period); 
    %set_if_not_null_f(fmap);
    %set_if_not_null_f(name_dump);   
-   put 'data= "' "&xgb_tempdir.\\xgbm&rn._train_libvsm.txt" '"';
-   put 'test:data= "' "&xgb_tempdir.\\xgbm&rn._train_libvsm.txt" '"';  
+   put 'data= "' "&xgb_tempdir./xgbm&rn._train_libvsm.txt" '"';
+   put 'test:data= "' "&xgb_tempdir./xgbm&rn._train_libvsm.txt" '"';  
    put 'model_dir = "' "&xgb_model_save_dir." '"';   
    %if %qupcase(&task.)=%quote(PRED) %then %do;
-      put 'name_pred ="' "&tempdir./xgb&rn._predictions.txt" '"';
-      %end;   
-
+      put 'name_pred ="' "&xgb_tempdir./xgb&rn._predictions.txt" '"';
+      %end;         
+   %if %qupcase(&model_in.) ne %quote(&null.) %then %do;
+      put 'model_in ="' "&xgb_model_save_dir./&model_in." '"';
+      %end; 
    %set_if_not_null_f(objective);
    %set_if_not_null(base_score);
+   %set_if_not_null(eval_train);
    %set_if_not_null_f(eval_metric);
    %set_if_not_null(seed);   
    %set_if_not_null(eta);
-   %set_if_not_null(aplpha);   
+   %set_if_not_null(alpha);   
    %set_if_not_null(gamma);   
    %set_if_not_null(lambda);
    %set_if_not_null(lambda_bias);    
@@ -166,14 +168,19 @@ data _null_;
    filename ct&rn. "&model_save_dir.\xgboost_train.conf" lrecl=10000;
    %create_conf(ct&rn.,train);    
    
-   data _null_;
-      length cmd $ 5000;
-      cmd=cat('"', "&xgboost_exe.", '" "', "&model_save_dir.\xgboost_train.conf", '" > "',
-              "&model_save_dir.\xgboost_train.log", '" 2>&1');
-      put cmd;
-      call system(cmd);
+   filename bf&rn. "&tempdir.\xgb&rn._batch.bat" lrecl=1024; 
+   data _null_;   
+      file bf&rn.;
+      drive=substr(strip("&model_save_dir."),1,2);
+      put drive;
+      path=substr(strip("&model_save_dir."),3,length(strip("&model_save_dir."))-2);
+      put 'cd "' path +(-1) '"';
+      put '"' "&xgboost_exe." '"' " xgboost_train.conf > xgboost_train.log 2>&1";
       run;
-   
+   filename bf&rn. clear;   
+   data _null_;
+      call system("&tempdir.\xgb&rn._batch.bat");
+      run;   
          
    data _null_;     
       infile "&model_save_dir.\xgboost_train.log" lrecl=10000 end=last;
@@ -194,22 +201,29 @@ data _null_;
          put "** End of XGBOOST Run Log                           **";
          put "**                                                  **";  
          put "******************************************************";
-         %end;                        
+         end; 
+      run;                       
    %end;   
 %else %if %qupcase(&task.)=%quote(PRED) %then %do;
    filename ct&rn. "&model_save_dir.\xgboost_score_&model_in..conf" lrecl=10000;
    %create_conf(ct&rn.,pred);    
    
-   data _null_;
-      length cmd $ 5000;
-      cmd=cat('"', "&xgboost_exe.", '" "', "&model_save_dir.\xgboost_score_&model_in..conf", '" > "',
-              "&model_save_dir.\xgboost_score_&model_in..log", '" 2>&1');
-      put cmd;
-      call system(cmd);
+   filename bf&rn. "&tempdir.\xgb&rn._batch.bat" lrecl=1024; 
+   data _null_;   
+      file bf&rn.;
+      drive=substr(strip("&model_save_dir."),1,2);
+      put drive;
+      path=substr(strip("&model_save_dir."),3,length(strip("&model_save_dir."))-2);
+      put 'cd "' path +(-1) '"';
+      put '"' "&xgboost_exe." '"' " xgboost_score_&model_in..conf > xgboost_score_&model_in..log 2>&1";
       run;
+   filename bf&rn. clear;   
+   data _null_;
+      call system("&tempdir.\xgb&rn._batch.bat");
+      run;      
             
    data _null_;     
-      infile "&model_save_dir.\xgboost_train.log" lrecl=10000 end=last;
+      infile "&model_save_dir.\xgboost_score_&model_in..log" lrecl=10000 end=last;
       if _n_=1 then do;
          put "******************************************************";
          put "**                                                  **";
@@ -227,37 +241,57 @@ data _null_;
          put "** End of XGBOOST Run Log                           **";
          put "**                                                  **";  
          put "******************************************************";
-         %end; 
+         end; 
+      run;
          
-   data &templib.xgbm&rn._preditions;
+   data &templib..xgbm&rn._predictions;
       length _id&rn. &pred_varname. 8;
-      infile "&tempdir./xgb&rn._predictions.txt";
-      input @1 &pred_varname best32. @;
+      infile "&tempdir./xgb&rn._predictions.txt" dsd delimiter=',' missover;
+      input &pred_varname @;
       _id&rn=_n_;
       output;
       run;
    
-   %if %quote(&out_keep_vars.)=%quote(&null.) %then %do;
-      proc sql;
-      create table &out as
+   proc sql;
+      create table &out(drop=_id&rn.) as
       select a.*,
              b.&pred_varname.   
-      from &templib..xgbm&rn._train a
-      join &templib.xgbm&rn._preditions b
+      from &templib..xgbm&rn._idvars a
+      join &templib..xgbm&rn._predictions b
          on a._id&rn.=b._id&rn.
-      ;quit;
-      %end;
-   %else %do;
-      proc sql;
-      create table &out as
-      select a.*,
-             b.&pred_varname.   
-      from &templib..xgbm&rn._train(keep=_id&rn. &key_vars) a
-      join &templib.xgbm&rn._preditions b
-         on a._id&rn.=b._id&rn.
-      ;quit;
-      %end;      
-   %end;                                                      
+      ;quit;   
+      
+/*   proc sql;*/
+/*   drop table &templib..xgbm&rn._predictions;*/
+/*   quit;*/
+   %end;     
+
+%macro delete_file(file);
+data _null_;
+    fname="___df";
+    rc=filename(fname,"&file.");
+    if rc = 0 and fexist(fname) then
+       rc=fdelete(fname);
+    rc=filename(fname);
+run;
+%mend;
+
+/*proc sql;*/
+/*drop table &templib..xgbm&rn._idvars;*/
+/*drop table &templib..xgbm&rn._train_libsvm_cmap;*/
+/*drop table &templib..xgbm&rn._train_libsvm_kmap;*/
+/*quit;*/
+
+/*%delete_file(&tempdir.\xgbm&rn._train_libvsm.txt);*/
+/*%delete_file(&tempdir.\xgbm&rn._batch.bat);*/
+/*%delete_file(&tempdir.\xgbm&rn._predictions.txt);*/
+
+%if %qupcase(&templib.) ne %quote(WORK) %then %do;
+   libname &templib. clear;
+   %end;
+
+libname m&rn. clear;     
+filename ct&rn. clear;                                            
 %mend;                 
                   
                   
