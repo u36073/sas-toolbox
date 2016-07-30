@@ -281,7 +281,7 @@ data _null_;
          run;
             
       data &templib..xgbm&rn._pred&i.;
-         length _id&rn. &pred_varname. 8;
+         length _id&rn. &pred_varname._nr&&imod_nround&i.. 8;
          infile "&tempdir./xgb&rn._predictions.txt" dsd delimiter=',' missover;
          input &pred_varname._nr&&imod_nround&i.. @;
          _id&rn=_n_;
