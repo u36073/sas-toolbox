@@ -43,6 +43,11 @@
                   pred_margin=
                   );
 
+options xsync noxwait;
+%local null rn templib rwd i j k q max_xround;
+%let null=;
+%let max_xround=.;
+
 %macro delete_file(file);
 data _null_;
     fname="___df";
@@ -53,10 +58,20 @@ data _null_;
 run;
 %mend;
 
-options xsync noxwait;
-%local null rn templib rwd i j k q max_xround;
-%let null=;
-%let max_xround=.;
+%macro check_dir(dir) ;
+%local rc fileref ;
+%let rc = %sysfunc(filename(fileref,&dir)) ;
+%if %sysfunc(fexist(&fileref)) %then
+   %put NOTE: The directory "&dir" exists ;
+%else %do;
+   %sysexec md "&dir.";
+   %put %sysfunc(sysmsg()) The directory has been created. ;
+   %end;
+%let rc=%sysfunc(filename(fileref)) ;
+%mend; 
+
+
+
 
 /* Get Random Number to use in naming temp files and datasets */
 data _null_;
@@ -70,6 +85,7 @@ data _null_;
     %let templib=work;
     %end;
 %else %do;
+    %check_dir(&tempdir.);
     libname w&rn. "&tempdir.";
     %let templib=w&rn.;
     %end;
@@ -77,7 +93,10 @@ data _null_;
 %if %quote(&model_save_dir.)=%quote(&null.) %then %do;    
    %let model_save_dir=&tempdir.;
    %end;
-
+%else %do;
+   %check_dir(&model_save_dir.);
+   %end;
+   
 libname m&rn. "&model_save_dir.";
 
 %if %quote(&model_in.) ne %quote(&null.) %then %do;
@@ -210,7 +229,9 @@ data _null_;
       run;
    filename bf&rn. clear;   
    data _null_;
-      call system("&tempdir.\xgb&rn._batch.bat");
+      length cmd $ 10000;
+      cmd=strip(cats('"',"&tempdir.\xgb&rn._batch.bat",'"'));
+      call system(cmd);
       run;   
       
    %delete_file(&tempdir.\xgb&rn._batch.bat);   
@@ -253,7 +274,9 @@ data _null_;
          run;
       filename bf&rn. clear;   
       data _null_;
-         call system("&tempdir.\xgb&rn._batch.bat");
+         length cmd $ 10000;
+         cmd=strip(cats('"',"&tempdir.\xgb&rn._batch.bat",'"'));
+         call system(cmd);
          run;   
          
       %delete_file(&tempdir.\xgb&rn._batch.bat);     
