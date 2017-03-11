@@ -1,5 +1,3 @@
-options mprint mlogic mcompilenote=all;
-
 %macro tm_sqlserv_sqlcmd(command=,								 
 								 command_file=,
 								 output_file=,								 
@@ -36,31 +34,60 @@ options xsync noxwait;
 
 %sysexec "&sqlserv_sqlcmd" &parms.;
 
-%if %sysfunc(fileexist(&output_filex.)) and %qupcase(&print_output.)=%quote(Y) %then %do;
+%let ofrows=0;
+
+%if %sysfunc(fileexist(&output_filex.)) %then %do;
 	data _null_;
 		file log;
 		infile "&output_filex." lrecl=15000;
-		if _n_=1 then do;
-			put "**************************************************************";
-			put "SQL SERVER OUTPUT";
-			put;
-			put "    Top &print_row_max lines of output printed.";
-			put "**************************************************************";
-			end;
-		put;
+		
+		%if %qupcase(&print_output.)=%quote(Y) %then %do;
+   		if _n_=1 then do;
+   			put "**************************************************************";
+   			put "SQL SERVER OUTPUT";
+   			put;
+   			put "    Top &print_row_max lines of output printed.";
+   			put "**************************************************************";
+   			end;
+   		put;
+   		%end;
+   		
 		input @1 x $1.;
-		put _infile_ @;
+		
+		%if %qupcase(&print_output.)=%quote(Y) %then %do;
+		   put _infile_ @;
+		   %end;
+		
+		call symput('ofrows',strip(_n_));
+		if _n_>&print_row_max. then stop;		
 		run;
 	%end;
 
+
 %if %quote(&out) ne %quote(&null) %then %do;
-	proc import datafile="&output_filex."
-	            out=&out dbms=csv replace;
-	getnames=yes;
-	datarow=3;
-	guessingrows=&guessingrows;
-	run; quit;
-	%end;
+   %if %sysfunc(fileexist(&output_filex.)) %then %do;
+      %if &ofrows. >= 3 %then %do;
+      	proc import datafile="&output_filex."
+      	            out=&out dbms=csv replace;
+      	getnames=yes;
+      	datarow=3;
+      	guessingrows=&guessingrows;
+      	run; quit;
+      	%end;
+      %else %do;
+         data &out;
+            length schema_name $ 32
+                   table_name $ 32
+                   ;
+            schema_name='';
+            table_name='';
+            table_id=-1;
+            schema_id=-1;
+            output;
+            run;
+         %end;
+   	%end;
+   %end;
 
 %if %quote(&output_file)=%quote(&null) %then %do;
 	data _null_;

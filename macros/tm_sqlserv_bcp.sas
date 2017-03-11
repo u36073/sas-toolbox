@@ -1,7 +1,7 @@
-%macro tm_oracle_upload(data=,
+%macro tm_sqlserv_bcp(data=,
 								db=,
 								schema=,
-                        table=,                        
+                        table=,
                         append=N,
                         db_keyvar=,
                         db_int_vars=,
@@ -33,12 +33,12 @@
                "PDJULG","PDJULI","QTR","QTRR","WEEKDATE","WEEKDATX","WEEKDAY","WEEKU",
                "WEEKV","WEEKW","WORDDATE","WORDDATX","YEAR","YYMM","YYMMDD","YYMMDDX",
                "YYMON","YYQ","YYQX","YYQR","YYQRX"
-               ;     
-               
+               ;
+
 %macro tm_ParseList(prefix,list);
     %local n word flag null i nwords list prefix;
-    %let null=;        
-    
+    %let null=;
+
     %let list=%trim(%left(&list));
 
     %if %quote(&list) ne %quote(&null) %then %do;
@@ -72,7 +72,7 @@
             %end;
         %end;
 &nwords
-%mend;                        
+%mend;
 
 /* Parse list of variables in the DB_*_VARS parameters */
 %let ndb_int=%tm_parselist(db_int,&db_int_vars.);
@@ -82,13 +82,13 @@
 proc contents data=&data out=_contents noprint;
 run;
 
-proc sort data=_contents; 
+proc sort data=_contents;
 by name;
 run;
 
 data _contents;
 	 set _contents;
-   
+
    if substr(format,1,8) in (&datetime_fmts) and length(format)>=8 then format="E8601DT25.3";
    else if substr(format,1,8) in (&time_fmts) and length(format)>=8 then format="TIME8.";
    else if substr(format,1,8) in (&date_fmts) and length(format)>=8 then format="YYMMDDD10.";
@@ -111,36 +111,36 @@ data _contents;
 
    else if substr(format,1,3) in (&datetime_fmts) and length(format)>=3 then format="E8601DT25.3";
    else if substr(format,1,3) in (&time_fmts) and length(format)>=3 then format="TIME8.";
-   else if substr(format,1,3) in (&date_fmts) and length(format)>=3 then format="YYMMDDD10.";   
+   else if substr(format,1,3) in (&date_fmts) and length(format)>=3 then format="YYMMDDD10.";
 
    else format='';
-   
+
    if format="E8601DT25.3" then dbtype='DATETIME2(3)';
    else if format="TIME8." then dbtype='TIME';
    else if format="YYMMDDD10." then dbtype='DATE';
    else if type=1 then dbtype="&db_numeric_type.";
    else if type=2 then dbtype='VARCHAR(' || trim(left(length)) || ')';
-   
+
    notnull=0;
-   
+
    %if &ndb_int.>0 %then %do;
 	   %do i=1 %to &ndb_int.;
 	   	if strip(upcase(name))=strip(upcase("&&db_int&i..")) then dbtype='INT';
 	   	%end;
 	   %end;
-	   
+
    %if &ndb_bigint.>0 %then %do;
 	   %do i=1 %to &ndb_bigint.;
 	   	if strip(upcase(name))=strip(upcase("&&db_bigint&i..")) then dbtype='BIGINT';
 	   	%end;
-	   %end;	   
-	   
+	   %end;
+
 	%if &ndb_notnull.>0 %then %do;
 	   %do i=1 %to &ndb_notnull.;
 	   	if strip(upcase(name))=strip(upcase("&&db_notnull&i..")) then notnull=1;
 	   	%end;
 	   %end;
-   
+
    run;
 
 %tm_sqlserv_table_exists(db=&db.,schema=&schema.,table=&table.,rv=bcp_exist_flag);
@@ -150,23 +150,29 @@ data _contents;
 	/*  Get information about existing table which we will be appending to.                    */
 	/*******************************************************************************************/
 	%if %qupcase(&append.)=%quote(Y) %then %do;
-		%let sql=select   a.column_id as dbc_column_id,
-								a.name as dbc_name,
-							   b.name as dbc_type,
-							   a.collation_name as dbc_collation_name,
-							   a.max_length as dbc_max_length,
-							   a.scale as dbc_scale,
-							   a.precision as dbc_precision,
-							   a.is_computed as dbc_is_computed,
-							   a.is_identity as dbc_is_identity,
-							   a.is_nullable as dbc_is_nullable
-						from home.sys.columns a
-						join home.sys.types b
-						  on a.system_type_id=b.system_type_id
-						where a.object_id=OBJECT_ID(%bquote(')&db..&schema..&table.%bquote(') and a.is_identity=0 and a.is_computed=0						
-						;		
-		%tm_sqlserv_sqlcmd(command=%bquote(sql.),out=__dbcols&rn.);
-		
+
+      filename asfn "&worklib_path.\bcp_get_column_info.sql";
+
+      data _null_;
+         file asfn;
+		   put "select a.column_id as dbc_column_id,";
+			put "		 a.name as dbc_name,";
+			put "		 b.name as dbc_type,";
+			put "		 a.collation_name as dbc_collation_name,";
+			put "		 a.max_length as dbc_max_length,";
+			put "		 a.scale as dbc_scale,";
+			put "		 a.precision as dbc_precision,";
+			put "		 a.is_computed as dbc_is_computed,";
+			put "		 a.is_identity as dbc_is_identity,";
+			put "		 a.is_nullable as dbc_is_nullable";
+			put "from &db..sys.columns a";
+			put "join &db..sys.types b";
+			put "  on a.system_type_id=b.system_type_id";
+			put "where a.object_id=OBJECT_ID(%bquote(')&db..&schema..&table.%bquote(')) and a.is_identity=0 and a.is_computed=0";
+			run;
+
+		%tm_sqlserv_sqlcmd(command_file=&worklib_path.\bcp_get_column_info.sql,out=__dbcols&rn.);
+
 		proc sql;
 		create table _contents2 as
 		select a.*,
@@ -187,7 +193,7 @@ data _contents;
 	by name;
 	run;
 	%end;
-	
+
 proc sql;
 reset noprint;
 select count(*) into :nvars from _contents2
@@ -197,9 +203,9 @@ select count(*) into :nvars from _contents2
 	%local var&i type&i len&i fmt&i dbtype&i dbc_name&i dbc_type&i notnull&i
 	       dbc_length&i dbc_scale&i dbc_precision&i dbc_nullable&i dbc_collation&i;
 	%end;
-	
+
 data _null_;
-   set _contents end=last;
+   set _contents2 end=last;
    call symput('var'||trim(left(_n_)),trim(left(name)));
    call symput('type'||trim(left(_n_)),trim(left(type)));
    call symput('len'||trim(left(_n_)),trim(left(name)));
@@ -207,22 +213,22 @@ data _null_;
    call symput('dbtype'||trim(left(_n_)),trim(left(upcase(dbtype))));
    call symput('notnull'||trim(left(_n_)),trim(left(notnull)));
    %if &bcp_exist_flag.=1 and %qupcase(&append.)=%quote(Y) %then %do;
-	  	call symput(cats('dbc_name',_n_),strip(upcase(name)));
-	  	call symput(cats('dbc_type',_n_),strip(type));
-	  	call symput(cats('dbc_length',_n_),strip(upcase(max_length)));
-	  	call symput(cats('dbc_scale',_n_),strip(upcase(scale)));
-	  	call symput(cats('dbc_precision',_n_),strip(upcase(precision)));
-	  	call symput(cats('dbc_nullable',_n_),strip(upcase(is_nullable)));
-	  	call symput(cats('dbc_collation',_n_),strip((collation_name));  
-	  	%end; 
+	  	call symput(cats('dbc_name',_n_),strip(upcase(dbc_name)));
+	  	call symput(cats('dbc_type',_n_),strip(dbc_type));
+	  	call symput(cats('dbc_length',_n_),strip(upcase(dbc_max_length)));
+	  	call symput(cats('dbc_scale',_n_),strip(upcase(dbc_scale)));
+	  	call symput(cats('dbc_precision',_n_),strip(upcase(dbc_precision)));
+	  	call symput(cats('dbc_nullable',_n_),strip(upcase(dbc_is_nullable)));
+	  	call symput(cats('dbc_collation',_n_),strip((dbc_collation_name)));
+	  	%end;
    run;
-   
+
 /*******************************************************************************************/
 /*  Create Table In Database                                                               */
 /*******************************************************************************************/
 %if &bcp_exist_flag.=0 or %qupcase(&append.)=%quote(N) %then %do;
 	filename dftx0 "&bcp_files_directory.\&data..sql";
-	
+
 	data _null_;
 		file "&bcp_files_directory.\&data..sql" lrecl=512;
 		put "CREATE TABLE [&db.].[&schema.].[&table.](" @;
@@ -232,15 +238,15 @@ data _null_;
 			%if &&notnull&i.=1 %then %do;
 				put " NOT" @;
 				%end;
-			put " NULL" @;	
+			put " NULL" @;
 			%if &i. < &nvars. %then %do;
 				put "," @;
 				%end;
 			%end;
 	   put;
 		put "   ) ON [PRIMARY]";
-		
-	%tm_sqlserv_sqlcmd(command_file=&bcp_files_directory.\&data..sql,query=N);	
+
+	%tm_sqlserv_sqlcmd(command_file=&bcp_files_directory.\&data..sql,query=N);
 	%end;
 
 
@@ -265,7 +271,7 @@ data _null_;
                    put _cc +(-1) @;
                    end;
                 else do;
-                   put &&var&i.. @;
+                   put &&var&i.. +(-1) @;
                    end;
                 end;
               %end;
@@ -275,7 +281,7 @@ data _null_;
              if &&var&i ne . then do;
                   __xx=trim(left(put(&&var&i,&&fmt&i.)));
                   put __xx +(-1) @;
-                end;                   
+                end;
              %end;
           %else %do;
              if strip(&&var&i) ne '' then do;
@@ -284,12 +290,12 @@ data _null_;
                    put _cc +(-1) @;
                    end;
                 else do;
-                   put &&var&i.. @;
+                   put &&var&i.. +(-1) @;
                    end;
                 end;
-             %end;         
+             %end;
          %end;
-      %if &i<=&nvars %then %do;
+      %if &i<&nvars %then %do;
          put '09'x @;
          %end;
       %end;
@@ -305,8 +311,8 @@ filename dftx2 "&bcp_files_directory.\&data..xml" lrecl=150;
 data _null_;
    file dftx2;
    put '<?xml version="1.0"?>';
-   put '<BCPFORMAT'; 
-   put 'xmlns="http://schemas.microsoft.com/sqlserver/2004/bulkload/format"'; 
+   put '<BCPFORMAT';
+   put 'xmlns="http://schemas.microsoft.com/sqlserver/2004/bulkload/format"';
    put 'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">';
    put '   <RECORD>';
    %do i=1 %to &nvars;
@@ -320,7 +326,7 @@ data _null_;
 	put '   </RECORD>';
 	put '   <ROW>';
    %do i=1 %to &nvars;
-		put '      <COLUMN SOURCE="' "&i." '" NAME="' "&&var&i.." @;		
+		put '      <COLUMN SOURCE="' "&i." '" NAME="' "&&var&i.." @;
 		%if %quote(&&dbtype&i..)=%quote(&db_numeric_type.) %then %do;
 			put '" xsi:type="SQLFLT8"/>';
 			%end;
@@ -339,38 +345,46 @@ data _null_;
 		%else %do;
 			put '" xsi:type="SQLVARYCHAR"/>';
 			%end;
-		%end;	
+		%end;
 	put '   </ROW>';
 	put '</BCPFORMAT>';
 	run;
 
-filename dftx0 clear;
+/*filename dftx0 clear;*/
 filename dftx1 clear;
 filename dftx2 clear;
 
-%let parm="&db..&schema..&table" in "&bcp_files_directory.\&data..csv";
-%let parm=&parm. -f "&bcp_files_directory.\&data..xml" -e "&bcp_files_directory.\&data.err";
-%let parm=&parm. -U &sqlserv_user. -P &sqlserv_password. -S "&sqlserv_server.,&sqlserv_port.";
-
-%put "&sqlserv_bcp." &parm.;
-  
-%sysexec "&sqlserv_bcp." &parm.;
-  
-%macro delete_file(x);
 data _null_;
-   rc=filename(fn,"&x");
-   if rc=0 and fexist(fn) then rc=fdelete(fname);
-   rc=filename(fname);
+   length cmd $ 10000;
+   cmd = cat('"',"&sqlserv_bcp.",'" "',"&db..&schema..&table",'" in "',"&bcp_files_directory.\&data..csv",
+             '" -f "',"&bcp_files_directory.\&data..xml",'" -e "',"&bcp_files_directory.\&data.err",
+             '" -U ',"&sqlserv_user. -P &sqlserv_password. -S ",'"',"&sqlserv_server.,&sqlserv_port.",'"'
+            );
+   put cmd;
+   call system(cmd);
    run;
-%mend;
- 
-%if %qupcase(&bcp_keep_data_file.)=%quote(N) %then %do;
-   %delete_file(&bcp_files_directory./&data..csv);
-   %end;
-   
-%if %qupcase(&bcp_keep_format_file.)=%quote(N) %then %do;
-   %delete_file(&bcp_files_directory.\&data..xml);
-   %end;
+
+/*%let parm="&db..&schema..&table" in "&bcp_files_directory.\&data..csv";*/
+/*%let parm=&parm. -f "&bcp_files_directory.\&data..xml" -e "&bcp_files_directory.\&data.err";*/
+/*%let parm=&parm. -U &sqlserv_user. -P &sqlserv_password. -S "&sqlserv_server.,&sqlserv_port.";*/
+
+/*%put "&sqlserv_bcp." &parm.;*/
+
+/*%macro delete_file(x);*/
+/*data _null_;*/
+/*   rc=filename(fn,"&x");*/
+/*   if rc=0 and fexist(fn) then rc=fdelete(fname);*/
+/*   rc=filename(fname);*/
+/*   run;*/
+/*%mend;*/
+
+/*%if %qupcase(&bcp_keep_data_file.)=%quote(N) %then %do;*/
+/*   %delete_file(&bcp_files_directory./&data..csv);*/
+/*   %end;*/
+
+/*%if %qupcase(&bcp_keep_format_file.)=%quote(N) %then %do;*/
+/*   %delete_file(&bcp_files_directory.\&data..xml);*/
+/*   %end;*/
 
 %mend;
 

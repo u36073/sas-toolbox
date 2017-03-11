@@ -15,6 +15,7 @@
 			  on a.schema_id=b.schema_id
 			order by 1,2,3,4
 			;
+%put &sql.;			
 
 %tm_sqlserv_sqlcmd(command=%bquote(&sql.),out=__tables&rn.,print_output=n);
 

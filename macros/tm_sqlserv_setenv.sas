@@ -1,11 +1,11 @@
 %macro tm_sqlserv_setenv(version=14,
-                         path_sqlcmd=C:\Program Files (x86)\Microsoft SQL Server\Client SDK\ODBC\110\Tools\Binn\sqlcmd,
-								 path_bcp=C:\Program Files (x86)\Microsoft SQL Server\Client SDK\ODBC\110\Tools\Binn\bcp,
+                         path_sqlcmd=C:\Program Files\Microsoft SQL Server\Client SDK\ODBC\130\Tools\Binn\sqlcmd,
+								 path_bcp=C:\Program Files\Microsoft SQL Server\Client SDK\ODBC\130\Tools\Binn\bcp,
 								 protocol=tcp,
 								 server=192.168.1.111,
-								 port=1433,
+								 port=49172,
 								 user=tmoore,
-								 password=catbird								 
+								 password=catbird
 								 );
 %global sqlserv_version
         sqlserv_sqlcmd
