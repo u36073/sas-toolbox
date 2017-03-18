@@ -1,6 +1,6 @@
 %macro lgbm_create_dataset(train_data=,
                            valid_data=,
-                           label=,
+                           label=,                           
                            templib=work,
                            lgbm_executable=D:\applications\LightGBM-2017-03-01\windows\x64\Release\lightgbm.exe,
                            );
@@ -44,7 +44,7 @@ run;
       %let train_dsn=%scan(&train_data.,2,%str(.%());
       %end;
    %let train_path=%sysfunc(pathname(&train_lib.));
-   %let train_csv=&train_path.\&train_dsn..train.lgbm.&label..csv;
+   %let train_csv=&train_path.\&train_dsn..lgbmt.&label..csv;
    %end;
 
 %if %quote(&valid_data.) ne %quote(&null.) %then %do;
@@ -57,7 +57,7 @@ run;
       %let valid_dsn=%scan(&valid_data.,2,%str(.%());
       %end;
    %let valid_path=%sysfunc(pathname(&valid_lib.));
-   %let valid_csv=&valid_path.\&valid_dsn..valid.lgbm.&label..csv;
+   %let valid_csv=&valid_path.\&valid_dsn..lgbmv.&label..csv;
    %end;
 
 /* Get Random Number to use in naming temp files and datasets */
@@ -66,8 +66,8 @@ data _null_;
    call symput('rn',strip(x));
    run;
 
-filename ct&rn. "&train_csv." lrecl=32000;
-filename cv&rn. "&valid_csv." lrecl=32000;
+filename ct&rn. "&train_csv." lrecl=100000 blksize=1000000;
+filename cv&rn. "&valid_csv." lrecl=100000 blksize=1000000;
 filename p&rn. "&tempdir.\lgbm_conf_&rn..conf" lrecl=10000;
 
 proc contents data=&train_data. out=&templib.._contents noprint;
@@ -92,59 +92,68 @@ data _null_;
    run;
 
 data _null_;
-   set &train_data;
-   file ct&rn.;
+   set &valid_data;
+   %*eol='0D'x||'0A'x;
+   
+   file cv&rn.;
    length __pv $ 32;
    if _n_=1 then do;
-      put "&label.," @;
+      put "&label.," @@;
       %do i=1 %to &num_vars;
          %if &i ne &num_vars %then %do;
-            put "&&var&i..," @;
+            put "&&var&i..," @@;
             %end;
          %else %do;
-            put "&&var&i..";
+            put "&&var&i.." @@;
             %end;
          %end;
+      %*put eol +(-1) @@;
+      put;
       end;
       
    if &label.=. then __pv='';
    else __pv=strip(put(&label.,best32.9));
-   put __pv +(-1) @;
+   put __pv +(-1) @@;
    
    %do i=1 %to &num_vars.;
       if &&var&i..=. then __pv='';
       else __pv=strip(put(&&var&i..,best32.9));
-      put "," __pv +(-1) @;
+      put "," __pv +(-1) @@;
       %end;
+   %*put eol +(-1) @@;
    put;
    run;
    
 
 data _null_;
-   set &valid_data;
-   file cv&rn.;
-   length __pv $ 32;   
+   set &train_data;
+   %*eol='0D'x||'0A'x;
+   file ct&rn.;
+   length __pv $ 32;
    if _n_=1 then do;
-      put "&label.," @;
+      put "&label.," @@;
       %do i=1 %to &num_vars;
          %if &i ne &num_vars %then %do;
-            put "&&var&i..," @;
+            put "&&var&i..," @@;
             %end;
          %else %do;
-            put "&&var&i..";
+            put "&&var&i.." @@;
             %end;
          %end;
+      %*put eol +(-1) @@;
+      put;
       end;
       
    if &label.=. then __pv='';
    else __pv=strip(put(&label.,best32.9));
-   put __pv +(-1) @;
+   put __pv +(-1) @@;
    
    %do i=1 %to &num_vars.;
       if &&var&i..=. then __pv='';
       else __pv=strip(put(&&var&i..,best32.9));
-      put "," __pv +(-1) @;
+      put "," __pv +(-1) @@;
       %end;
+   %*put eol +(-1) @@;
    put;
    run;   
 
@@ -188,6 +197,7 @@ filename cv&rn. clear;
 filename p&rn. clear;
 %delete_file(&tempdir.\lgbm&rn._batch.bat);
 %delete_file(&tempdir.\lgbm_conf_&rn..conf);
+%delete_file(&tempdir.\LightGBM_model.txt)
 
 proc sql; 
 reset noprint;

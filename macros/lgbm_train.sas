@@ -147,7 +147,7 @@ run;
 &nwords
 %mend;
 
-data _t&rn..ref_parameter;
+data _t&rn..ref_parameter_&rn.;
 length parameter data_type default $ 32  enum_values  $ 256 min_value max_value 8;
 parameter='label';data_type='variable';default='';enum_values='';min_value='';max_value='';output;
 parameter='weight';data_type='variable';default='';enum_values='';min_value='';max_value='';output;
@@ -213,7 +213,7 @@ run;
       %let train_dsn=%scan(&train_data.,2,%str(.%());
       %end;
    %let train_path=%sysfunc(pathname(&train_lib.));
-   %let train_csv=&train_path.\&train_dsn..lgbm.&label..csv;
+   %let train_csv=&train_path.\&train_dsn..lgbmt.&label..csv;
    %end;
 
 %if %quote(&valid_data.) ne %quote(&null.) %then %do;
@@ -226,11 +226,11 @@ run;
       %let valid_dsn=%scan(&valid_data.,2,%str(.%());
       %end;
    %let valid_path=%sysfunc(pathname(&valid_lib.));
-   %let valid_csv=&valid_path.\&valid_dsn..lgbm.&label..csv;
+   %let valid_csv=&valid_path.\&valid_dsn..lgbmv.&label..csv;
    %end;
 
 data _null_;
-   set _t&rn..ref_parameter end=last;
+   set _t&rn..ref_parameter_&rn. end=last;
    call symput(cats('parm',_n_),strip(parameter));
    call symput(cats('dtype',_n_),strip(data_type));
    call symput(cats('default',_n_),strip(default));
@@ -243,9 +243,13 @@ data _null_;
       end;
    run;
 
-filename p&rn. "&tempdir.\lgbm_conf_&rn..conf" lrecl=32000;
+filename p&rn. "&tempdir.\lgbm_conf_&rn..conf" lrecl=100000;
 
-%if %quote(&output_model)=%quote(&null) %then %let output_model=&tempdir.\lgbm_output_model_&rn..txt;
+%let delete_output_model=N;
+%if %quote(&output_model)=%quote(&null) %then %do;
+   %let output_model=&tempdir.\lgbm_output_model_&rn..txt;
+   %let delete_output_model=Y;
+   %end;
 
 data _null_;
    file p&rn.;
@@ -424,25 +428,92 @@ data _t&rn..lgbm_log_&rn.;
                     outvar=p_long_range,
                     description=,
                     prefix=_,
-                    feature_array_size=10000,
-                    tree_array_size=10000,
+                    tree_array_size=50000,
                     code_array_size=50000
                     );
 %local null;
 %let null=;
 
-filename _lgsin "&infile" lrecl=32000;
-filename _lgsout "&outfile" lrecl=32000;
+filename _lgsin "&infile" recfm=n;
+filename _lgsout "&outfile" lrecl=100000;
 
-data _input;
-   infile _lgsin;
-   length row_id $ 64 line $ 32000;
-   input @1 x $1.;
-   row_id=scan(_infile_,1,'=');
-   line=scan(_infile_,2,'=');
-   if row_id ne '' and line ne '';
+
+data _input(keep=row_id line);
+   infile _lgsin recfm=n eof=end_of_file;
+   length current_char next_char $ 1 varname $ 64;
+   retain first_character 1 current_char varname '' var_count char_count 0 eq_flag 0;
+
+   length row_id $ 64 line $ 32000;   
+   retain _header_complete 0 row_id line '';
+    
+   input next_char $char1. @@;
+   if next_char='20'x then next_char="|";
+  
+   char_count=char_count+1;
+          
+   if first_character=1 then do;
+     current_char=next_char;
+     first_character=0;
+     return;
+     end;
+
+   if not eq_flag and current_char not in ('0D'x,'0A'x) then do;      
+      if current_char ne '=' then do;
+         if row_id ne '' then row_id=cat(strip(row_id),strip(current_char));
+         else row_id=strip(current_char);
+         *put row_id;
+         end;
+      else do;
+         *put row_id;
+         eq_flag=1;
+         line='';
+         if strip(row_id)='feature_names' then do;
+            var_count=0;
+            varname='';
+            end;
+         end;
+      end;
+   else if eq_flag and current_char not in ('0D'x,'0A'x) then do;
+      if strip(row_id)='feature_names' then do;
+         if current_char="|" or next_char in ('0D'x,'0A'x) then do;
+            var_count=var_count+1;
+            call symput(cats('var',var_count),strip(varname));
+            varname='';
+            if next_char in ('0D'x,'0A'x) then call symput('nvars',strip(var_count));
+            end;
+         else do;
+            if varname ne '' then varname=cats(varname,current_char);
+            else varname=strip(current_char);
+            end;
+         end;
+      else if row_id in ("Tree","num_leaves","split_feature","split_gain","threshold","decision_type","left_child",
+                         "right_child","leaf_parent","leaf_value","leaf_count","internal_value","internal_count",
+                         "shrinkage") 
+      then do;
+         if line ne '' then line=cats(line,current_char);
+         else line=strip(current_char);
+         end;
+      end;
+      
+
+   if next_char in ('0D'x,'0A'x) then do;
+      if row_id in ("Tree","num_leaves","split_feature","split_gain","threshold","decision_type","left_child",
+                    "right_child","leaf_parent","leaf_value","leaf_count","internal_value","internal_count",
+                    "shrinkage") 
+      then do;
+         output;
+         end;
+      
+      *put row_id char_count;
+
+      row_id='';
+      eq_flag=0;
+      end;
+
+   current_char = next_char;
+   return;
+   end_of_file: put current_char +(-1);
    run;
-
 
 proc ds2;
 data work._output(keep=(tree_id indent code_line) overwrite=yes);
@@ -451,7 +522,7 @@ declare char(512) code_line;
 declare char(32000) line;
 declare char(64) word;
 declare double tree_id header_complete tree_complete num_leaves tree_id shrinkage indent;
-declare char(64) feature_names[&feature_array_size.];
+declare char(64) feature_names[&nvars.];
 declare double split_feature[&tree_array_size.];
 declare double split_gain[&tree_array_size.];
 declare double threshold[&tree_array_size.];
@@ -473,7 +544,7 @@ method to_array(in_out char text, double x[*]);
    k=0;
    do until(flag=1);
       k=k+1;
-      word=scan(text,k,' ');
+      word=scan(text,k,'|');
       if strip(word)='' then do;
          flag=1;
          end;
@@ -582,78 +653,80 @@ method init();
    tree_complete=0;
    num_leaves=0;
    indent=0;
-   code_line='/****************************************************************************************'; output work._output;
+   
+   %do i=1 %to &nvars.;
+      feature_names[&i.] = strip(%tslit(&&var&i..));
+      %end;
+   
+   code_line='/****************************************************************************************'; 
+   output work._output;
    code_line=%tslit(** &outvar.); output work._output;
    %if %quote(&description.) ne %quote(&null.) %then %do;
       code_line=cat('** ',%tslit(&description.)); output work._output;
       %end;
    code_line='**'; output work._output;
-   code_line=cat('** Model Generated Using Microsoft LightGBM. (https://github.com/Microsoft/LightGBM)'); output work._output;
-   code_line=cat('** SAS Code Generated On ',put(today(),mmddyy10.),' at ',put(time(),timeampm11.)); output work._output;
-   code_line='*****************************************************************************************/'; output work._output;
+   code_line=cat('** Model Generated Using Microsoft LightGBM. (https://github.com/Microsoft/LightGBM)'); 
+   output work._output;
+   code_line=cat('** SAS Code Generated On ',put(today(),mmddyy10.),' at ',put(time(),timeampm11.)); 
+   output work._output;
+   code_line='*****************************************************************************************/'; 
+   output work._output;
    code_line='';
 end;
 
 method run();
    set _input;
-   if row_id='feature_names' then do;
-      to_array(line,feature_names);
-      header_complete=1;
+   if row_id='num_leaves' then do;
+      num_leaves=inputn(line,'best32.');
       end;
 
-   if header_complete=1 then do;
-      if row_id='num_leaves' then do;
-         num_leaves=inputn(line,'best32.');
-         end;
+   if row_id='split_feature' then do;
+      to_array(line,split_feature);
+      end;
 
-      if row_id='split_feature' then do;
-         to_array(line,split_feature);
-         end;
+   if row_id='split_gain' then do;
+      to_array(line,split_gain);
+      end;
 
-      if row_id='split_gain' then do;
-         to_array(line,split_gain);
-         end;
+   if row_id='threshold' then do;
+      to_array(line,threshold);
+      end;
 
-      if row_id='threshold' then do;
-         to_array(line,threshold);
-         end;
+   if row_id='decision_type' then do;
+      to_array(line,decision_type);
+      end;
 
-      if row_id='decision_type' then do;
-         to_array(line,decision_type);
-         end;
+   if row_id='left_child' then do;
+      to_array(line,left_child);
+      end;
 
-      if row_id='left_child' then do;
-         to_array(line,left_child);
-         end;
+   if row_id='right_child' then do;
+      to_array(line,right_child);
+      end;
 
-      if row_id='right_child' then do;
-         to_array(line,right_child);
-         end;
+   if row_id='leaf_parent' then do;
+      to_array(line,leaf_parent);
+      end;
 
-      if row_id='leaf_parent' then do;
-         to_array(line,leaf_parent);
-         end;
+   if row_id='leaf_value' then do;
+      to_array(line,leaf_value);
+      end;
 
-      if row_id='leaf_value' then do;
-         to_array(line,leaf_value);
-         end;
+   if row_id='leaf_count' then do;
+      to_array(line,leaf_count);
+      end;
 
-      if row_id='leaf_count' then do;
-         to_array(line,leaf_count);
-         end;
+   if row_id='internal_value' then do;
+      to_array(line,internal_value);
+      end;
 
-      if row_id='internal_value' then do;
-         to_array(line,internal_value);
-         end;
+   if row_id='internal_count' then do;
+      to_array(line,internal_count);
+      end;
 
-      if row_id='internal_count' then do;
-         to_array(line,internal_count);
-         end;
-
-      if row_id='shrinkage' then do;
-         shrinkage=inputn(line,'best32.');
-         tree_complete=1;
-         end;
+   if row_id='shrinkage' then do;
+      shrinkage=inputn(line,'best32.');
+      tree_complete=1;
       end;
 
    if tree_complete=1 then do;
@@ -687,7 +760,6 @@ data _null_;
    spaces=3*indent;
    put @spaces code_line;
    run;
-
 %mend;
 
 %lightgbm2sas(infile=&output_model.,
@@ -697,10 +769,18 @@ data _null_;
               description=&sas_code_model_desc.
               );
 
-%if %quote(&output_model)=%quote(&tempdir.\lgbm_output_model_&rn..txt) %then %do;
+proc sql;
+drop table _t&rn..ref_parameter_&rn.;
+drop table _t&rn..lgbm_train_&rn.;
+quit;
+
+libname _t&rn clear;
+
+%if %qupcase(&delete_output_model)=%quote(Y) %then %do;
    %delete_file(&tempdir.\lgbm_output_model_&rn..txt);
    %end;
 %delete_file(&tempdir.\lgbm_conf_&rn..conf);
 %delete_file(&tempdir.\lgbm_batch_&rn..bat);
-
+%delete_file(&tempdir.\lgbm_train_&rn..log);
+%delete_file(&tempdir.\LightGBM_model.txt);
 %mend;
