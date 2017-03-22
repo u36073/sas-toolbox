@@ -1,36 +1,20 @@
 ﻿%macro tm_rank_chart(data=,
 	    	            out=,
+	    	            print=y,
 			            where=,
 			            wherelabel=,
-			            by=,
-			            depvar1=,
-			            depvar2=,
-			            depvar3=,
-			            indvar=,
-			            indlabel=,
-			            indformat=,
+			            by=,			           
+			            sumvars=,
+			            scorevar=,
+			            scorelabel=,
+			            scoreformat=10.5,
 			            groups=10,
-			            format1=,
-			            format2=,
-			            format3=,
-			            depname1=,
-			            depname2=,
-			            depname3=,
-			            deplabel1=,
-			            deplabel2=,
-			            deplabel3=,
-			            bylabel=,
-			            graph=,
-			            graph_type=bar,
-			            print_table=y,
-			            graph_data_table=y,
+			            bylabel=,			            
+			            code=,
+			            codevar=,
 			            keepvars=,
-			            TransformVarFilename=,
-			            TransformVarName=,
-			            TransformVarType=1   /* 1 ===> Rank Ordered Groups from Lowest to Highest (1st Group=1, 2nd Group=2, ...) */
-			                                 /* 2 ===> Rank Ordered Groups from Lowest to Highest (1st Group=mean(depvar1), 2nd Group=mean(depvar1), ...) */
 			            );
-	%local i j k null;
+	%local i j k null flag;
 	%let null=;
 
   /******************************************************************************
@@ -134,7 +118,7 @@ Example:
 	%if %quote(&wherelabel)=%quote(&null) %then %let wherelabel=WHERE: &where;
 
 	data __temp0(compress=yes);
-		set &data(keep=&keepvars &indvar &by);
+		set &data(keep=&keepvars &scorevar &by);
 		%if %quote(&where) ne %quote(&null) %then %do;
 		   if &where;
 		   %end;
@@ -161,100 +145,77 @@ Example:
 	%if %quote(&by) ne %quote(&null) %then %do;
 		by &by;
 		%end;
-	var &indvar;
+	var &scorevar;
 	ranks rank;
 	run;
 
 	%let null=;
+	
+	%let flag=0;
+	%let k=0;
+	%do %until (&flag=1);
+	   %let k=%eval(&k+1);
+	   %let word=%scan(%bquote(&sumvars.),&k.,@);
+	   %if %quote(&word.) ne %quote(&null.) %then %do;
+	      %let sumvar&k.=%quote(&word.);
+	      %end;
+	   %else %do;
+	      %let nsumvars=%eval(&k.-1);
+	      %let flag=1;
+	      %end;
+	   %end;
 
-	%if %quote(&depname1)=%quote(&null) %then %let depname1=__v1;
-	%if %quote(&depname2)=%quote(&null) %then %let depname2=__v2;
-	%if %quote(&depname3)=%quote(&null) %then %let depname3=__v3;
-
-	%if %quote(&deplabel1)=%quote(&null) %then %let deplabel1=&depvar1;
-	%if %quote(&deplabel2)=%quote(&null) %then %let deplabel2=&depvar2;
-	%if %quote(&deplabel3)=%quote(&null) %then %let deplabel3=&depvar3;
-
-	%if %quote(&indlabel)=%quote(&null) %then %let indlabel=&indvar;
+	%if %quote(&scorelabel)=%quote(&null) %then %let scorelabel=&scorevar;
 	%if %quote(&bylabel)=%quote(&null) %then %let bylabel=&by;
+   
+   %if %qupcase(&print.)=%quote(Y) %then %do;
+   	TITLE h=2 "&scorelabel. Data Table";
+   	%if %quote(&where) ne %quote(&null) %then %do;
+   		title2 h=1.5 "&wherelabel";
+   		%end;
+   			
+   	proc sql;
+   	select %if %quote(&by) ne %quote(&null) %then %do;
+   			   &sqlby,
+   			   %end;
+   			rank+1 as rank label="Score Rank",
+   			%do i=1 %to &nsumvars.;
+   			   &&sumvar&i..,
+               %end;
+   			count(*)/(select count(*) from __temp) as pct_obs format=percent7.2,
+   			mean(&scorevar) as avg_score label="AVG Score" format=&scoreformat.,
+   			min(&scorevar) as min_score label="MIN Score" format=&scoreformat.,
+   			max(&scorevar) as max_score label="MAX Score" format=&scoreformat.,
+   			count(*) as nobs format=comma12.
+   	from __temp
+   	%if %quote(&by) ne %quote(&null) %then %do;
+   		group by &sqlby, rank
+   		order by &sqlby, rank
+   		%end;
+   	%else %do;
+   		group by rank
+   		order by rank
+   		%end;
+   	;quit;
+   	title;
+   	%end;
 
-	TITLE h=2 "&indlabel Data Table";
-	%if %quote(&where) ne %quote(&null) %then %do;
-		title2 h=1.5 "&wherelabel";
-		%end;
-	proc sql;
-	%if %qupcase(&print_table)=%quote(N) %then %do;
-		reset noprint;
-		%end;
-	select %if %quote(&by) ne %quote(&null) %then %do;
-			&sqlby,
-			%end;
-			rank,
-			&depvar1 as &depname1
-			                  label="&deplabel1"
-			                  %if %quote(&format1) ne %quote(&null) %then %do;
-												format=&format1
-												%end;
-												,
-			%if %quote(&depvar2) ne %quote(&null) %then %do;
-				&depvar2 as &depname2
-													label="&deplabel2"
-				                  %if %quote(&format2) ne %quote(&null) %then %do;
-													format=&format2
-													%end;
-													,
-				%end;
-			%if %quote(&depvar3) ne %quote(&null) %then %do;
-				&depvar3 as &depname3
-													label="&deplabel3"
-													%if %quote(&format3) ne %quote(&null) %then %do;
-													format=&format3
-													%end;
-													,
-				%end;
-			count(*)/(select count(*) from __temp) as pct_obs format=percent7.2,
-			mean(&indvar) as _mindvar label="Predicted &indvar",
-			min(&indvar) as _min label="MIN(&indvar)",
-			max(&indvar) as _max label="MAX(&indvar)",
-			count(*) as nobs
-	from __temp
-	%if %quote(&by) ne %quote(&null) %then %do;
-		group by &sqlby, rank
-		order by &sqlby, rank
-		%end;
-	%else %do;
-		group by rank
-		order by rank
-		%end;
-	;quit;
-
+  
   %if %quote(&out) eq %quote(&null) %then %let out=work._rankx_temp;
-
+  
   proc sql;
   create table &out as
   select %if %quote(&by) ne %quote(&null) %then %do;
-  		&sqlby,
-  		%end;
-  		rank,
-  		&depvar1 as &depname1 %if %quote(&format1) ne %quote(&null) %then %do;
-  											label="&deplabel1"
-  											%end;
-  											,
-  		%if %quote(&depvar2) ne %quote(&null) %then %do;
-  			&depvar2 as &depname2 %if %quote(&format2) ne %quote(&null) %then %do;
-  												label="&deplabel2"
-  												%end;
-  												,
-  			%end;
-  		%if %quote(&depvar3) ne %quote(&null) %then %do;
-  			&depvar3 as &depname3 %if %quote(&format3) ne %quote(&null) %then %do;
-  												label="&deplabel3"
-  												%end;
-  												,
-  			%end;
+  		      &sqlby,
+  		      %end;
+  		rank+1 as rank label="Score Rank",
+  		%do i=1 %to &nsumvars.;
+		   &&sumvar&i..,
+         %end;
   		count(*)/(select count(*) from __temp) as pct_obs,
-  		min(&indvar) as _min label="MIN(&indvar)",
-  		max(&indvar) as _max label="MAX(&indvar)",
+  		mean(&scorevar) as avg_score label="AVG Score",
+  		min(&scorevar) as min_score label="MIN Score",
+  		max(&scorevar) as max_score label="MAX Score",
   		count(*) as nobs
   from __temp
   %if %quote(&by) ne %quote(&null) %then %do;
@@ -267,15 +228,19 @@ Example:
   	%end;
   ;quit;
 
-  %if %quote(&TransformVarFilename)=%quote(&null) %then %let TransformVarFilename=log;
-  %if %quote(&TransformVarName)=%quote(&null) %then %let TransformVarName=&indvar._g&groups;
+   
+  %if %quote(&codevar)=%quote(&null) %then %let codevar=&scorevar._g&groups;
 
   %if %quote(&by) ne %quote(&null) %then %do;
      data _null_;
      	set &out end=last;
      	by &by;
-     	file &TransformVarFilename;
-			rank=rank+1;
+     	%if %quote(&code)=%quote(&null) %then %do;
+     	   file log;
+     	   %end;
+     	%else %do;
+     	   file "&code" lrecl=10000;
+     	   %end;     	
      	if first.&&byvar&nbv then do;
      		%if %VarType(&by,&data)=C %then %do;
      			put "if &by='" &by "' then do;";
@@ -283,30 +248,18 @@ Example:
      		%else %do;
      		  put "if &by=" &by " then do;";
      		  %end;
-     		put "   if &indvar<=" _max " then do;";
-     		put "      &TransformVarName._pct=" psuccess ";";
-     		put "      &TransformVarName._roi=" roi ";";
-     		put "      &TransformVarName._min=" _min ";";
-     		put "      &TransformVarName._min=" _max ";";
-     		put "      &TransformVarName.=" rank ";";
+     		put "   if &scorevar<=" max_score " then do;";
+     		put "      &codevar.=" rank ";";
      		put "   end;";
      		end;
      	else if not last.&&byvar&nbv then do;
-	   		put "   else if &indvar<=" _max " then do;";
-	   		put "      &TransformVarName._pct=" psuccess ";";
-	   		put "      &TransformVarName._roi=" roi ";";
-     		put "      &TransformVarName._min=" _min ";";
-     		put "      &TransformVarName._min=" _max ";";
-     		put "      &TransformVarName.=" rank ";";
+   		put "   else if &scorevar<=" max_score " then do;";
+     		put "      &codevar.=" rank ";";
      		put "      end;";
      		end;
      	else do;
      		put "   else do;";
-     		put "      &TransformVarName._pct=" psuccess ";";
-     		put "      &TransformVarName._roi=" roi ";";
-     		put "      &TransformVarName._min=" _min ";";
-     		put "      &TransformVarName._min=" _max ";";
-     		put "      &TransformVarName.=" rank ";";
+     		put "      &codevar.=" rank ";";
      		put "      end;";
      		put "   end;";
      		end;
@@ -315,218 +268,28 @@ Example:
   %else %do;
      data _null_;
      	set &out end=last;
-     	file &TransformVarFilename;
-     	%if %qupcase(&TransformVarType)=%quote(1) %then %do;
-     		assigned_value=rank+1;
-     		%end;
-     	%else %if %qupcase(&TransformVarType)=%quote(2) %then %do;
-     	  assigned_value=&depname1;
-     	  %end;
+     	%if %quote(&code)=%quote(&null) %then %do;
+     	   file log;
+     	   %end;
      	%else %do;
-     	  assigned_value=rank+1;
-     	  %end;
+     	   file "&code" lrecl=10000;
+     	   %end;    
      	if _n_=1 then do;
-     		put "if &indvar<=" _max " then do;";
-     		put "   &TransformVarName.=" psuccess ";";
-     		put "   &TransformVarName._roi=" roi ";";
-     		put "   &TransformVarName._min=" _min ";";
-     		put "   &TransformVarName._min=" _max ";";
-     		put "   &TransformVarName.=" rank ";";
+     		put "if &scorevar<=" max_score " then do;";
+     		put "   &codevar.=" rank ";";
      		put "   end;";
      		end;
      	else if not last then do;
-	   		put "else if &indvar<=" _max " then do;";
-	   		put "   &TransformVarName.=" psuccess  ";";
-     		put "   &TransformVarName._roi=" roi ";";
-     		put "   &TransformVarName._min=" _min ";";
-     		put "   &TransformVarName._min=" _max ";";
-     		put "   &TransformVarName.=" rank ";";
+   		put "else if &scorevar<=" max_score " then do;";
+     		put "   &codevar.=" rank ";";
      		put "   end;";
      		end;
      	else do;
      		put "else do;";
-     		put "   &TransformVarName.=" psuccess  ";";
-     		put "   &TransformVarName._roi=" roi ";";
-     		put "   &TransformVarName._min=" _min ";";
-     		put "   &TransformVarName._min=" _max ";";
-     		put "   &TransformVarName.=" rank ";";
+     		put "   &codevar.=" rank ";";
      		put "   end;";
      		end;
      	run;
      %end;
-
-	proc sql;
-	create table __graph1 as
-	     select %if %quote(&by) ne %quote(&null) %then %do;
-	     		&sqlby,
-	     		%end;
-	     		rank,
-	     		&depvar1 as &depname1 %if %quote(&format1) ne %quote(&null) %then %do;
-	     											format=&format1
-	     											label="&deplabel1"
-	     											%end;
-	     											,
-	     		%if %quote(&depvar2) ne %quote(&null) %then %do;
-	     			&depvar2 as &depname2 %if %quote(&format2) ne %quote(&null) %then %do;
-	     												format=&format2
-	     												label="&deplabel2"
-	     												%end;
-	     												,
-	     			%end;
-	     		%if %quote(&depvar3) ne %quote(&null) %then %do;
-	     			&depvar3 as &depname3 %if %quote(&format3) ne %quote(&null) %then %do;
-	     												format=&format3
-	     												label="&deplabel3"
-	     												%end;
-	     												,
-	     			%end;
-	     		count(*)/(select count(*) from __temp) as pct_obs format=percent7.2,
-	     		min(&indvar) as _min label="MIN(&indvar)",
-	     		max(&indvar) as _max label="MAX(&indvar)",
-	     		count(*) as nobs
-	     from __temp
-	     %if %quote(&by) ne %quote(&null) %then %do;
-	     	group by &sqlby, rank
-	     	order by &sqlby, rank
-	     	%end;
-	     %else %do;
-	     	group by rank
-	     	order by rank
-	     	%end;
-;quit;
-title;
-%if %qupcase(&graph)=%quote(Y) %then %do;
-	ods path work.templat(update) sashelp.tmplmst(read);
-	%do i=1 %to 3;
-		%if %quote(&&depvar&i) ne %quote(&null) %then %do;
-
-			proc sql;
-			reset noprint;
-			select max(1.05*&&depname&i) into :maxy from __graph1 where rank ne .;
-			select min(.95*&&depname&i) into :miny from __graph1 where rank ne .;
-			quit;
-
-			data _null_;
-				if &miny<0 and &maxy>0 then do;
-				   call symput('zeroref',strip("Y"));
-					end;
-				else do;
-					call symput('zeroref',strip("N"));
-					end;
-				run;
-
-
-			%if %qupcase(&graph_type)=%quote(BAR) %then %do;
-			   proc template;
-	         define statgraph sgdesign;
-            begingraph / border=false designwidth=9in designheight=7in;
-            entrytitle halign=center "%upcase(&indlabel) &groups.-Quantiles";
-			   entrytitle halign=center "&&deplabel&i";
-               layout overlay / walldisplay=ALL
-                                xaxisopts=( label=("%upcase(&indlabel) &groups.-Quantiles") type=discrete)
-                                yaxisopts=( label=("&&deplabel&i.") /*linearopts=( viewmax=&maxy. viewmin=&miny.)*/)
-                                ;
-
-                  barchart category=rank response=&&depname&i / %if &nbv>=2 %then %do;	group=&byvar2. %end;
-                  										                %else %if &nbv=1 %then %do;	group=&byvar1. %end;
-                                                                name='series' xaxis=X stat=mean barlabel=false
-                                                                barwidth=1.0 groupdisplay=Cluster BARLABELFITPOLICY=NONE
-                                                                clusterwidth=0.85 grouporder=ascending;
-						%if %qupcase(&zeroref)=%quote(Y) %then %do;
-                  	referenceline y=0 / name='hzeroref' xaxis=X lineattrs=(pattern=SHORTDASH thickness=1 color=darkblue)
-                     	                 curvelabel="Zero" curvelabellocation=outside curvelabelposition=max
-                        	              ;
-                     %end;
-
-                  %if %qupcase(&graph_data_table)=%quote(Y) %then %do;
-              		   innermargin / align=bottom opaque=true backgroundcolor=lightgray separator=true;
-              		   	axistable x=rank value=_max / stat=sum
-              		   	                              %if &nbv>=2 %then %do;	class=&byvar2. %end;
-                     										   %else %if &nbv=1 %then %do;	class=&byvar1. %end;
-              		   	                              display=all
-              		      	                           headerlabel="&groups.-Quantile Maximum Value of &indlabel."
-              		        		                        ;
-              		   endinnermargin;
-
-
-              		   innermargin / align=top opaque=true backgroundcolor=lightgray separator=true;              		        		                        ;
-                       axistable x=rank value=&&depname&i / stat=sum
-              		   	                              %if &nbv>=2 %then %do;	class=&byvar2. %end;
-                     										   %else %if &nbv=1 %then %do;	class=&byvar1. %end;
-              		   	                              display=all
-              		      	                           headerlabel="&&deplabel&i.."
-              		        		                        ;
-              		   endinnermargin;
-              		   %end;
-
-              		discretelegend 'series' / opaque=false border=true
-                                 halign=center valign=bottom displayclipped=true
-                                 order=rowmajor location=outside;
-               endlayout;
-            endgraph;
-            end;
-            run;
-				%end;
-			%else %do;
-			   proc template;
-	         define statgraph sgdesign;
-            begingraph / border=false designwidth=9in designheight=7in;
-            entrytitle halign=center "%upcase(&indlabel) &groups.-Quantiles";
-			   entrytitle halign=center "&&deplabel&i";
-               layout overlay / walldisplay=ALL
-                                xaxisopts=( label=("%upcase(&indlabel) &groups.-Quantiles") type=discrete discreteopts=( tickvaluefitpolicy=splitrotate))
-                                yaxisopts=( label=("&&deplabel&i."))
-                                ;
-                  seriesplot x=rank y=&&depname&i / %if &nbv>=2 %then %do;	group=&byvar2. %end;
-                  										    %else %if &nbv=1 %then %do;	group=&byvar1. %end;
-                                                    name='series'
-                                                    display=(markers)
-                                                    clusterwidth=0.5
-                                                    connectorder=xaxis
-                                                    grouporder=ascending;
-
-						%if %qupcase(&zeroref)=%quote(Y) %then %do;
-                  	referenceline y=0 / name='hzeroref' xaxis=X lineattrs=(pattern=SHORTDASH thickness=1 color=darkblue)
-                     	                 curvelabel="Zero" curvelabellocation=outside curvelabelposition=max
-                        	              ;
-                     %end;
-
-                  %if %qupcase(&graph_data_table)=%quote(Y) %then %do;
-              		   innermargin / align=bottom opaque=true backgroundcolor=lightgray separator=true;
-              		   	axistable x=rank value=_max / stat=sum
-              		   	                              %if &nbv>=2 %then %do;	class=&byvar2. %end;
-                     										   %else %if &nbv=1 %then %do;	class=&byvar1. %end;
-              		   	                              display=all
-              		      	                           headerlabel="&groups.-Quantile Maximum Value of &indlabel."
-              		        		                        ;
-              		   endinnermargin;
-
-              		   innermargin / align=top opaque=true backgroundcolor=lightgray separator=true;              		        		                        ;
-                       axistable x=rank value=&&depname&i / stat=sum
-              		   	                              %if &nbv>=2 %then %do;	class=&byvar2. %end;
-                     										   %else %if &nbv=1 %then %do;	class=&byvar1. %end;
-              		   	                              display=all
-              		      	                           headerlabel="&groups.-Quantile Maximum Value of &indlabel."
-              		        		                        ;
-              		   endinnermargin;
-              		   %end;
-
-              		discretelegend 'series' / opaque=false border=true
-                                 halign=center valign=bottom displayclipped=true
-                                 order=rowmajor location=outside;
-               endlayout;
-            endgraph;
-            end;
-            run;
-				%end;
-
-
-         proc sgrender data=__graph1 template=sgdesign;
-         %if &nbv>=2 %then %do; by &byvar1.; %end;
-         format _max &indformat.;
-	      run;
-			%end;
-		%end;
-	%end;
 
 %mend;
