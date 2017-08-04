@@ -2,7 +2,7 @@
                            valid_data=,
                            label=,                           
                            templib=work,
-                           lgbm_executable=D:\applications\LightGBM-2017-03-01\windows\x64\Release\lightgbm.exe,
+                           lgbm_executable=D:\applications\LightGBM-2017-03-01\windows\x64\Release\lightgbm.exe
                            );
 
 
@@ -45,6 +45,8 @@ run;
       %end;
    %let train_path=%sysfunc(pathname(&train_lib.));
    %let train_csv=&train_path.\&train_dsn..lgbmt.&label..csv;
+   %delete_file(&train_csv.);
+   %delete_file(&train_csv..bin);
    %end;
 
 %if %quote(&valid_data.) ne %quote(&null.) %then %do;
@@ -58,6 +60,8 @@ run;
       %end;
    %let valid_path=%sysfunc(pathname(&valid_lib.));
    %let valid_csv=&valid_path.\&valid_dsn..lgbmv.&label..csv;
+   %delete_file(&valid_csv.);
+   %delete_file(&valid_csv..bin);
    %end;
 
 /* Get Random Number to use in naming temp files and datasets */
@@ -66,8 +70,8 @@ data _null_;
    call symput('rn',strip(x));
    run;
 
-filename ct&rn. "&train_csv." lrecl=100000 blksize=1000000;
-filename cv&rn. "&valid_csv." lrecl=100000 blksize=1000000;
+filename ct&rn. "&train_csv." lrecl=100000;
+filename cv&rn. "&valid_csv." lrecl=100000;
 filename p&rn. "&tempdir.\lgbm_conf_&rn..conf" lrecl=10000;
 
 proc contents data=&train_data. out=&templib.._contents noprint;
@@ -182,7 +186,7 @@ data _null_;
    put drive;
    path=substr(strip("&tempdir."),3,length(strip("&tempdir."))-2);
    put 'cd "' path +(-1) '"';
-   put '"' "&lgbm_executable." '"' " config=lgbm_conf_&rn..conf";
+   put '"' "&lgbm_executable." '"' " config=lgbm_conf_&rn..conf > lgbm_train_&rn..log 2>&1";
    run;
 
 filename b&rn. clear;
@@ -197,7 +201,8 @@ filename cv&rn. clear;
 filename p&rn. clear;
 %delete_file(&tempdir.\lgbm&rn._batch.bat);
 %delete_file(&tempdir.\lgbm_conf_&rn..conf);
-%delete_file(&tempdir.\LightGBM_model.txt)
+%delete_file(&tempdir.\LightGBM_model.txt);
+%*delete_file(&tempdir.\lgbm_train_&rn..log);
 
 proc sql; 
 reset noprint;

@@ -66,13 +66,11 @@
                    max_position=20,
                    label_gain=,
                    num_class=1,
-
-
-                   lightgbm_exec=D:\applications\LightGBM-2017-03-01\windows\x64\Release\lightgbm.exe,
+                   lightgbm_exec=D:\applications\LightGBM-2017-06-05\windows\x64\Release\lightgbm.exe
                    );
 
 options xsync noxwait;
-%local null rn tempdir rwd i j k q num_vars train_csv valid_csv train_lib valid_lib;
+%local null rn tempdir rwd i j k q p num_vars train_csv valid_csv train_lib valid_lib;
 %local train_dsn valid_dsn train_path valid_path;
 %let null=;
 
@@ -488,7 +486,7 @@ data _input(keep=row_id line);
          end;
       else if row_id in ("Tree","num_leaves","split_feature","split_gain","threshold","decision_type","left_child",
                          "right_child","leaf_parent","leaf_value","leaf_count","internal_value","internal_count",
-                         "shrinkage") 
+                         "shrinkage","num_class") 
       then do;
          if line ne '' then line=cats(line,current_char);
          else line=strip(current_char);
@@ -497,9 +495,12 @@ data _input(keep=row_id line);
       
 
    if next_char in ('0D'x,'0A'x) then do;
-      if row_id in ("Tree","num_leaves","split_feature","split_gain","threshold","decision_type","left_child",
-                    "right_child","leaf_parent","leaf_value","leaf_count","internal_value","internal_count",
-                    "shrinkage") 
+      if row_id = "num_class" then do;
+         call symput('nclasses',strip(line));
+         end;
+      else if row_id in ("Tree","num_leaves","split_feature","split_gain","threshold","decision_type","left_child",
+                         "right_child","leaf_parent","leaf_value","leaf_count","internal_value","internal_count",
+                         "shrinkage") 
       then do;
          output;
          end;
@@ -746,8 +747,32 @@ method term();
    indent=0;
    code_line='';
    output work._output;
-   code_line=cat(%tslit(&outvar.),'=sum(of ',%tslit(&prefix.tree1-&prefix.tree),strip(tree_id),');');
-   output work._output;
+   %if &nclasses.=1 %then %do;
+      code_line=cat(%tslit(&outvar.),'=sum(of ',%tslit(&prefix.tree1-&prefix.tree),strip(tree_id),');');
+      output work._output;
+      %end;
+   %else %do;
+      indent=0;    
+      code_line=cat('array treeval{*} ',%tslit(&prefix.tree1-&prefix.tree),strip(tree_id),';'); output work._output;
+      code_line='__flag=0; __i=0;'; output work._output;
+      %do i=0 %to %eval(&nclasses.-1);
+         code_line=cat(%tslit(&outvar.),'_c',%tslit(&i.),'=0;'); output work._output;
+         %end;          
+      code_line='do until(__flag=1);'; output work._output;       
+      indent=1;
+      %do i=0 %to %eval(&nclasses.-1);
+         code_line='__i=__i+1;'; output work._output;
+         code_line=cat(%tslit(&outvar.),'_c',%tslit(&i.),
+                   '=sum(',%tslit(&outvar.),'_c',%tslit(&i.),',treeval{__i});'); 
+         output work._output;         
+         %end;  
+      code_line=cat('if __i>=',strip(tree_id),' then __flag=1;'); output work._output;
+      code_line='end;'; output work._output;
+      indent=0;
+      code_line=''; output work._output;
+      code_line='drop __i __flag;'; output work._output;
+      %end;
+   
    code_line=cat('drop ',%tslit(&prefix.tree1-&prefix.tree),strip(tree_id),';');
    output work._output;
 end;

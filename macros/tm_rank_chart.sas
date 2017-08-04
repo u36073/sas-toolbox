@@ -12,6 +12,7 @@
 			            bylabel=,			            
 			            code=,
 			            codevar=,
+			            code_value_var=,
 			            keepvars=,
 			            );
 	%local i j k null flag;
@@ -250,16 +251,25 @@ Example:
      		  %end;
      		put "   if &scorevar<=" max_score " then do;";
      		put "      &codevar.=" rank ";";
+     		%if %quote(&code_value_var) ne %quote(&null.) %then %do;
+     		   put "      &codevar.v=" &code_value_var ";";
+     		   %end;
      		put "   end;";
      		end;
      	else if not last.&&byvar&nbv then do;
    		put "   else if &scorevar<=" max_score " then do;";
      		put "      &codevar.=" rank ";";
+     		%if %quote(&code_value_var) ne %quote(&null.) %then %do;
+     		   put "      &codevar.v=" &code_value_var ";";
+     		   %end;
      		put "      end;";
      		end;
      	else do;
      		put "   else do;";
      		put "      &codevar.=" rank ";";
+     		%if %quote(&code_value_var) ne %quote(&null.) %then %do;
+     		   put "      &codevar.v=" &code_value_var ";";
+     		   %end;
      		put "      end;";
      		put "   end;";
      		end;
@@ -277,16 +287,25 @@ Example:
      	if _n_=1 then do;
      		put "if &scorevar<=" max_score " then do;";
      		put "   &codevar.=" rank ";";
+     		%if %quote(&code_value_var) ne %quote(&null.) %then %do;
+     		   put "      &codevar.v=" &code_value_var ";";
+     		   %end;
      		put "   end;";
      		end;
      	else if not last then do;
    		put "else if &scorevar<=" max_score " then do;";
      		put "   &codevar.=" rank ";";
+     		%if %quote(&code_value_var) ne %quote(&null.) %then %do;
+     		   put "      &codevar.v=" &code_value_var ";";
+     		   %end;
      		put "   end;";
      		end;
      	else do;
      		put "else do;";
      		put "   &codevar.=" rank ";";
+     		%if %quote(&code_value_var) ne %quote(&null.) %then %do;
+     		   put "      &codevar.v=" &code_value_var ";";
+     		   %end;
      		put "   end;";
      		end;
      	run;
