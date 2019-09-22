@@ -2,6 +2,7 @@
                    train_csv=,
                    valid_data=,
                    valid_csv=,
+				       delete_csv_files=n,
                    tempdir=,
                    sas_code=,
                    sas_code_model_name=,
@@ -201,6 +202,8 @@ parameter='label_gain';data_type='double_list';default='';enum_values='';min_val
 parameter='num_class';data_type='int';default='';enum_values='';min_value='1';max_value='';output;run;
 run;
 
+%let create_train_csv=N;
+%let create_valid_csv=N;
 %if %quote(&train_data.) ne %quote(&null.) %then %do;
    %let train_lib=%scan(&train_data.,1,%str(.%());    
    %if %quote(%scan(&train_data.,1,%str(%()))=%quote(&train_lib.) %then %do;
@@ -212,6 +215,10 @@ run;
       %end;
    %let train_path=%sysfunc(pathname(&train_lib.));
    %let train_csv=&train_path.\&train_dsn..lgbmt.&label..csv;
+   
+   filename t__csv "&train_csv.";
+   %if not %sysfunc(fexist(t__csv)) %then %let create_train_csv=Y;
+   filename t__csv clear;
    %end;
 
 %if %quote(&valid_data.) ne %quote(&null.) %then %do;
@@ -225,7 +232,20 @@ run;
       %end;
    %let valid_path=%sysfunc(pathname(&valid_lib.));
    %let valid_csv=&valid_path.\&valid_dsn..lgbmv.&label..csv;
-   %end;
+   
+   filename v__csv "&valid_csv.";
+   %if not %sysfunc(fexist(v__csv)) %then %let create_valid_csv=Y;
+   filename v__csv clear;
+   %end;   
+   
+%if &create_train_csv=Y or &create_valid_csv=Y %then %do;
+	%lgbm_create_dataset(train_data=&train_data.,
+						 valid_data=&valid_data.,
+						 label=&label.,                           
+						 templib=work,
+						 lgbm_executable=&lightgbm_exec.
+						 );  
+	%end;
 
 data _null_;
    set _t&rn..ref_parameter_&rn. end=last;
@@ -808,4 +828,12 @@ libname _t&rn clear;
 %delete_file(&tempdir.\lgbm_batch_&rn..bat);
 %delete_file(&tempdir.\lgbm_train_&rn..log);
 %delete_file(&tempdir.\LightGBM_model.txt);
+
+%if %qupcase(&delete_csv_files)=%quote(Y) %then %do;
+	%delete_file(&train_csv.);
+	%delete_file(&valid_csv.);
+	%delete_file(&train_csv..bin);
+	%delete_file(&valid_csv..bin);
+	%end;
+
 %mend;

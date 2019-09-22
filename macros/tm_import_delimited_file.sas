@@ -5,10 +5,13 @@
        cr_lf_in_fields=y,
        file_max_record_length=65000,
        guessingrows=1000,
-       tempdir=.      
+       tempdir=     
        );
 
-%local i;
+%local i null;
+%let null=;
+
+%if %quote(&tempdir.)=%quote(&null) %then %let tempdir=%sysfunc(pathname(work));
 
 %if %qupcase(&cr_lf_in_fields)=%quote(Y) %then %do;
 
@@ -20,7 +23,8 @@
                 
         length current_char next_char repA repD $ 1;
         
-        retain first_character 1 open 0 current_char repA repD '' char_count 0;
+        retain first_character 1 open 0 current_char prev1_char prev2_char prev3_char repA repD '' 
+        char_count last_non_quote last_open 0;
         
         input next_char $char1.;
         
@@ -28,26 +32,49 @@
                 
         if first_character=1 then do;
            current_char=next_char;
+           prev1_char='';
+           prev2_char='';
+           prev3_char='';
            first_character=0;
            repA=byte(174);
            repD=byte(175);
+           last_non_quote=-1;
            return;
            end;
 		
-		    file _tidftmp recfm=n;
-		                
-        if open=0 and current_char='"' then open=1;
-        else if open=1 and current_char='"' and 
-               (next_char="%unquote(&delimiter)" or next_char='0D'x or next_char='0A'x )
-             then open=0;
+		file _tidftmp recfm=n;
+		last_open=last_open+1;
+							
+		%let close_cond=(next_char="%unquote(&delimiter)" or next_char='0D'x or next_char='0A'x );                
+        if open=0 and current_char='"' then do;
+            open=1;
+            last_open=0;
+            last_non_quote=-1;
+            end;
+        else if open=1 then do;
+            if current_char ne '"' then last_non_quote=0;
+            else last_non_quote=last_non_quote+1;
+            
+            if (prev1_char ne '"' and current_char='"' and &close_cond.) or
+               (prev2_char="," and last_open=2 and prev1_char='"' and current_char='"' and &close_cond.) or
+               (last_non_quote>=3 and last_non_quote/2 ne int(last_non_quote/2) and prev1_char='"' and current_char='"' and &close_cond.) 
+            then do;
+                open=0;
+                last_non_quote=-1;
+                end;
+            end;
             
         if open=1 and current_char='0D'x then put repD +(-1);
         else if open=1 and current_char='0A'x then put repA +(-1);
         else put current_char +(-1);
-                   
+        
+        prev3_char=prev2_char;
+        prev2_char=prev1_char;
+        prev1_char=current_char;           
         current_char = next_char;
         
-        *if char_count>1000 then stop;
+        
+        %*if char_count>1000 then stop;
         
         return;
         

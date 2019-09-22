@@ -6,7 +6,7 @@ Parameters:  positional
     prefix  Prefix to use for macro variables containing the name of each
              member in the list
 
-    list        List of values separated by spaces
+    list    List of values separated by spaces
 
 Parses a list of text or numeric values separated by a space and assigns each
 value to a macro variable with the prefix specified in the [prefix] parameter
@@ -35,7 +35,7 @@ Example:
     %let list=%trim(%left(&list));
 
     %if %quote(&list) ne %quote(&null) %then %do;
-       %let flag=0; %let n=1; %let word=;
+      %let flag=0; %let n=1; %let word=;
       %global &prefix.1;
       %let &prefix.1=%scan(&list,1,%str( ));
        %do %while (&flag=0);
